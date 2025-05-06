@@ -2,6 +2,8 @@
 document.addEventListener('DOMContentLoaded', function () {
     // --- Time Updates ---
     const currentTimeElem = document.getElementById('current-time');
+    const lastRefreshTimeElem = document.getElementById('last-refresh-time');
+    
     function updateCurrentTime() {
         if (currentTimeElem) {
             currentTimeElem.textContent = new Date().toLocaleString('en-US', {
@@ -12,6 +14,29 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     updateCurrentTime();
     setInterval(updateCurrentTime, 1000);
+    
+    // Fetch and update the last refresh time from the server
+    function updateLastRefreshTime() {
+        fetch('/get-last-refresh-time')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (lastRefreshTimeElem && data.last_refresh_time) {
+                    lastRefreshTimeElem.textContent = data.last_refresh_time;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching last refresh time:', error);
+            });
+    }
+    
+    // Update last refresh time initially and then every 10 seconds
+    updateLastRefreshTime();
+    setInterval(updateLastRefreshTime, 10000);
 
     // Auto-refresh page (if desired, often better to use HTMX or fetch for partials)
     // setTimeout(() => {

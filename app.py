@@ -272,6 +272,25 @@ def index():
     )
 
 
+@app.route("/get-last-refresh-time")
+def get_last_refresh_time():
+    """API endpoint to get the last refresh time from the database."""
+    conn = get_db_connection()
+    try:
+        result = conn.execute(
+            "SELECT value FROM app_state WHERE key = 'last_refresh_time'"
+        ).fetchone()
+        if result and result[0]:
+            # Format the timestamp for display
+            last_refresh = result[0].strftime("%Y-%m-%d %H:%M:%S %Z")
+            return jsonify({"last_refresh_time": last_refresh})
+        return jsonify({"last_refresh_time": "Never"})
+    except Exception as e:
+        print(f"Error getting last refresh time: {e}")
+        return jsonify({"last_refresh_time": "Error"})
+    finally:
+        conn.close()
+
 @app.route("/refresh-data", methods=["POST"])
 def refresh_data():
     global last_refresh_time_g
@@ -283,6 +302,33 @@ def refresh_data():
     # from scheduler import fetch_and_update_job_statuses # careful with imports
     # fetch_and_update_job_statuses(app)
     # But for simplicity, we assume scheduler is running.
+    
+    # Update the last_refresh_time in the database
+    current_time = now_utc()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_state (
+                key VARCHAR PRIMARY KEY,
+                value TIMESTAMPTZ
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO app_state (key, value) 
+            VALUES ('last_refresh_time', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """,
+            (current_time,),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating last refresh time: {e}")
+    finally:
+        conn.close()
+    
     last_refresh_time_g = get_current_time_str()
     session["last_refresh_time"] = last_refresh_time_g
     return redirect(url_for("index"))
@@ -404,7 +450,7 @@ if __name__ == "__main__":
     start_scheduler(app)
     try:
         app.run(
-            debug=True, use_reloader=False
+            debug=True, use_reloader=False, port=5050
         )  # use_reloader=False is important when using APScheduler
     finally:
         stop_scheduler()

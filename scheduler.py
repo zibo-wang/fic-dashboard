@@ -215,15 +215,28 @@ def fetch_and_update_job_statuses(flask_app):
             conn.commit()
             scheduler_logger.info("Job status update complete.")
 
-            # Update global last refresh time for UI
-            # This is tricky because scheduler runs in a different context.
-            # One way is to write to a shared variable (with locks) or a small file/db entry.
-            # For simplicity, the main app's refresh button updates a session variable.
-            # The true "last data refresh" is when this job runs.
-            global last_refresh_time_g  # From app.py - this won't work directly.
-            # The UI should reflect when the DATA was last fetched, not just page load.
-            # Let's write to a simple file or use a separate DB table for app state.
-            # For now, the UI shows "last page refresh" time. The data is updated by scheduler.
+            # Update last refresh time in the database
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS app_state (
+                        key VARCHAR PRIMARY KEY,
+                        value TIMESTAMPTZ
+                    );
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO app_state (key, value) 
+                    VALUES ('last_refresh_time', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                    """,
+                    (current_time,),
+                )
+                conn.commit()
+                scheduler_logger.info("Updated last_refresh_time in database.")
+            except Exception as e:
+                scheduler_logger.error(f"Error updating last_refresh_time: {e}")
 
         except Exception as e:
             conn.rollback()
