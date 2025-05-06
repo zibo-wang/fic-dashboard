@@ -28,6 +28,14 @@
             background-color: rgba(0, 0, 0, 0.5);
         }
 
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal:not(.hidden) {
+            display: block;
+        }
+
         .modal-content {
             background-color: #1a1b26;
             margin: 10% auto;
@@ -50,6 +58,26 @@
 
         .modal-close:hover {
             color: #7aa2f7;
+        }
+
+        /* Add flash animation for critical incidents */
+        @keyframes flash-red {
+            0% {
+                background-color: transparent;
+            }
+
+            50% {
+                background-color: rgba(247, 118, 105, 0.2);
+            }
+
+            /* tn-red with opacity */
+            100% {
+                background-color: transparent;
+            }
+        }
+
+        .flash-red {
+            animation: flash-red 2s infinite;
         }
     </style>
 </head>
@@ -92,29 +120,43 @@
         <!-- On-Call Engineers -->
         <div>
             <h3 class="text-md font-semibold text-tn-cyan mb-2">On Call</h3>
-            <div class="space-y-2 text-sm">
-                {% for engineer in engineers %}
-                <div class="flex justify-between items-center">
-                    <span>{{ engineer.name }} ({{ engineer.on_call_level }})</span>
-                    <form action="{{ url_for('delete_engineer', engineer_id=engineer.id) }}" method="POST"
-                        onsubmit="return confirm('Delete {{engineer.name}}?');">
-                        <button type="submit" class="text-tn-red hover:text-tn-orange text-xs">Delete</button>
-                    </form>
+            <div class="space-y-4 text-sm">
+                <!-- L1 Engineers -->
+                <div>
+                    <h4 class="text-tn-purple font-medium mb-2">L1 Engineers</h4>
+                    <div class="space-y-2">
+                        {% for engineer in engineers if engineer.on_call_level == 'L1' %}
+                        <div class="flex justify-between items-center">
+                            <span>{{ engineer.name }}</span>
+                            <form action="{{ url_for('delete_engineer', engineer_id=engineer.id) }}" method="POST"
+                                onsubmit="return confirm('Delete {{engineer.name}}?');">
+                                <button type="submit" class="text-tn-red hover:text-tn-orange text-xs">Delete</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
-                {% endfor %}
+
+                <!-- L2 Engineers -->
+                <div>
+                    <h4 class="text-tn-purple font-medium mb-2">L2 Engineers</h4>
+                    <div class="space-y-2">
+                        {% for engineer in engineers if engineer.on_call_level == 'L2' %}
+                        <div class="flex justify-between items-center">
+                            <span>{{ engineer.name }}</span>
+                            <form action="{{ url_for('delete_engineer', engineer_id=engineer.id) }}" method="POST"
+                                onsubmit="return confirm('Delete {{engineer.name}}?');">
+                                <button type="submit" class="text-tn-red hover:text-tn-orange text-xs">Delete</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
-            <form action="{{ url_for('add_engineer') }}" method="POST" class="mt-3 space-y-2">
-                <input type="text" name="name" placeholder="Engineer Name" required
-                    class="w-full bg-tn-bg border border-tn-comment rounded p-1 text-sm focus:ring-tn-blue focus:border-tn-blue">
-                <select name="level" required
-                    class="w-full bg-tn-bg border border-tn-comment rounded p-1 text-sm focus:ring-tn-blue focus:border-tn-blue">
-                    <option value="L1">L1</option>
-                    <option value="L2">L2</option>
-                </select>
-                <button type="submit"
-                    class="w-full bg-tn-green hover:bg-tn-blue text-white py-1 px-3 rounded text-sm">Add
-                    Engineer</button>
-            </form>
+            <button onclick="openAddEngineerModal()"
+                class="mt-3 w-full bg-tn-green hover:bg-tn-blue text-white py-1 px-3 rounded text-sm">
+                Add Engineer
+            </button>
         </div>
         <div class="text-xs text-tn-comment mt-auto pt-4">
             Dashboard data auto-refreshes from API every 30s.
@@ -407,7 +449,7 @@
     </main>
 
     <!-- Respond Modal -->
-    <div id="respondModal" class="modal">
+    <div id="respondModal" class="modal hidden">
         <div class="modal-content">
             <button onclick="closeRespondModal()" class="modal-close">×</button>
             <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Respond to Incident: <span
@@ -458,7 +500,7 @@
     </div>
 
     <!-- INC Link Modal -->
-    <div id="incLinkModal" class="modal">
+    <div id="incLinkModal" class="modal hidden">
         <div class="modal-content">
             <button onclick="closeIncLinkModal()" class="modal-close">×</button>
             <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Update INC Link</h3>
@@ -481,6 +523,36 @@
                     <button type="submit"
                         class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Save
                         INC Details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Engineer Modal -->
+    <div id="addEngineerModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeAddEngineerModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Add Engineer</h3>
+            <form action="{{ url_for('add_engineer') }}" method="POST" class="space-y-4">
+                <div>
+                    <label for="engineerName" class="block text-sm font-medium text-tn-text">Engineer Name:</label>
+                    <input type="text" id="engineerName" name="name" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div>
+                    <label for="engineerLevel" class="block text-sm font-medium text-tn-text">Level:</label>
+                    <select id="engineerLevel" name="level" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                        <option value="L1">L1</option>
+                        <option value="L2">L2</option>
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeAddEngineerModal()"
+                        class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Cancel</button>
+                    <button type="submit"
+                        class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Add
+                        Engineer</button>
                 </div>
             </form>
         </div>

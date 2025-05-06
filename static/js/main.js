@@ -105,6 +105,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // --- Modal Handling ---
+    // Initialize all modals as hidden
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        modal.classList.add('hidden');
+    });
+
     // Respond Modal
     const respondModal = document.getElementById('respondModal');
     const respondModalForm = document.getElementById('respondModalForm');
@@ -112,12 +118,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const respondModalJobName = document.getElementById('respondModalJobName');
 
     window.openRespondModal = function (incidentId, jobName) {
+        if (!respondModal || !respondModalForm || !respondModalIncidentId || !respondModalJobName) {
+            console.error('Respond modal elements not found');
+            return;
+        }
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
         respondModalIncidentId.value = incidentId;
         respondModalJobName.textContent = jobName;
         respondModalForm.action = `/respond-incident/${incidentId}`;
         respondModal.classList.remove('hidden');
     }
+
     window.closeRespondModal = function () {
+        if (!respondModal || !respondModalForm) {
+            console.error('Respond modal elements not found');
+            return;
+        }
         respondModal.classList.add('hidden');
         respondModalForm.reset();
     }
@@ -130,16 +147,65 @@ document.addEventListener('DOMContentLoaded', function () {
     const incLinkModalIncLink = document.getElementById('incLinkModalIncLink');
 
     window.openIncLinkModal = function (incidentId, currentIncNumber, currentIncLink) {
+        if (!incLinkModal || !incLinkModalForm || !incLinkModalIncidentId || !incLinkModalIncNumber || !incLinkModalIncLink) {
+            console.error('INC Link modal elements not found');
+            return;
+        }
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
         incLinkModalIncidentId.value = incidentId;
         incLinkModalIncNumber.value = currentIncNumber || '';
         incLinkModalIncLink.value = currentIncLink || '';
         incLinkModalForm.action = `/update-inc-link/${incidentId}`;
         incLinkModal.classList.remove('hidden');
     }
+
     window.closeIncLinkModal = function () {
+        if (!incLinkModal || !incLinkModalForm) {
+            console.error('INC Link modal elements not found');
+            return;
+        }
         incLinkModal.classList.add('hidden');
         incLinkModalForm.reset();
     }
+
+    // Add Engineer Modal
+    const addEngineerModal = document.getElementById('addEngineerModal');
+    const addEngineerForm = document.querySelector('#addEngineerModal form');
+
+    window.openAddEngineerModal = function () {
+        if (!addEngineerModal || !addEngineerForm) {
+            console.error('Add Engineer modal elements not found');
+            return;
+        }
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
+        addEngineerModal.classList.remove('hidden');
+    }
+
+    window.closeAddEngineerModal = function () {
+        if (!addEngineerModal || !addEngineerForm) {
+            console.error('Add Engineer modal elements not found');
+            return;
+        }
+        addEngineerModal.classList.add('hidden');
+        addEngineerForm.reset();
+    }
+
+    // Close modals when clicking outside
+    window.addEventListener('click', function (event) {
+        if (event.target.classList.contains('modal')) {
+            if (!respondModal.classList.contains('hidden')) {
+                closeRespondModal();
+            }
+            if (!incLinkModal.classList.contains('hidden')) {
+                closeIncLinkModal();
+            }
+            if (!addEngineerModal.classList.contains('hidden')) {
+                closeAddEngineerModal();
+            }
+        }
+    });
 
     // Close modals on ESC key
     document.addEventListener('keydown', function (event) {
@@ -149,6 +215,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (!incLinkModal.classList.contains('hidden')) {
                 closeIncLinkModal();
+            }
+            if (!addEngineerModal.classList.contains('hidden')) {
+                closeAddEngineerModal();
             }
         }
     });
