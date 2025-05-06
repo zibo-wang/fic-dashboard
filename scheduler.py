@@ -106,6 +106,7 @@ def fetch_and_update_job_statuses(flask_app):
                 # We only care about CRITICAL, ERROR, WARNING for creating/updating incidents
                 # OK or LOG status from API means the issue is resolved or not an issue.
                 if status in ["CRITICAL", "ERROR", "WARNING"]:
+                    # Check if this job has an active incident
                     if job_api_id in db_active_incidents:
                         # Existing active incident, check if status changed
                         if db_active_incidents[job_api_id]["status"] != status:
@@ -129,7 +130,18 @@ def fetch_and_update_job_statuses(flask_app):
                                 (log_url, current_time, job_api_id),
                             )
                     else:
-                        # New incident
+                        # Check if this job was previously resolved
+                        prev_incident = conn.execute(
+                            "SELECT id FROM incidents WHERE job_api_id = ? AND resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT 1",
+                            (job_api_id,),
+                        ).fetchone()
+
+                        if prev_incident:
+                            scheduler_logger.info(
+                                f"Previously resolved job {job_api_id} has failed again. Creating new incident."
+                            )
+
+                        # Create new incident (whether it's a new job or a reoccurrence)
                         scheduler_logger.info(
                             f"New incident detected: {job_api_id} - {job_name} ({status})"
                         )
@@ -137,21 +149,6 @@ def fetch_and_update_job_statuses(flask_app):
                             """
                             INSERT INTO incidents (job_api_id, job_name, status, log_url, first_detected_at, last_api_update)
                             VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(job_api_id) DO UPDATE SET
-                                status = excluded.status,
-                                log_url = excluded.log_url,
-                                -- If it was resolved and reappears, reset resolved_at and first_detected_at (or handle as new)
-                                -- For simplicity, if it conflicts, it might be an old resolved one.
-                                -- A robust system might create a new incident ID or have a 'reopened_at'
-                                resolved_at = NULL, 
-                                first_detected_at = excluded.first_detected_at, -- if it was truly new
-                                last_api_update = excluded.last_api_update,
-                                -- Reset response fields if it's a "new" occurrence of an old job_api_id
-                                responded_at = NULL,
-                                responding_engineer_id = NULL,
-                                priority = NULL,
-                                inc_number = NULL,
-                                inc_link = NULL
                         """,
                             (
                                 job_api_id,

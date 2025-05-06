@@ -23,7 +23,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS incidents (
         id INTEGER PRIMARY KEY DEFAULT nextval('incident_id_seq'),
-        job_api_id VARCHAR UNIQUE,      -- Unique ID from the source API
+        job_api_id VARCHAR,             -- ID from the source API (no longer unique)
         job_name VARCHAR,
         status VARCHAR,                 -- CRITICAL, ERROR, WARNING
         priority VARCHAR,               -- P1, P2, P3, P4

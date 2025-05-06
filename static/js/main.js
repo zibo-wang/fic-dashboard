@@ -127,6 +127,11 @@ document.addEventListener('DOMContentLoaded', function () {
         respondModalIncidentId.value = incidentId;
         respondModalJobName.textContent = jobName;
         respondModalForm.action = `/respond-incident/${incidentId}`;
+        // Set default priority to P3
+        const prioritySelect = document.getElementById('respondModalPriority');
+        if (prioritySelect) {
+            prioritySelect.value = 'P3';
+        }
         respondModal.classList.remove('hidden');
     }
 
