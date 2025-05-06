@@ -1,4 +1,16 @@
-# scheduler.py
+"""Background scheduler for the FIC Dashboard.
+
+This module implements a background scheduler that periodically fetches job statuses
+from an external API and updates the database accordingly. It handles:
+- Fetching job statuses every 30 seconds
+- Creating new incidents for failed jobs
+- Updating existing incidents
+- Resolving incidents when jobs are fixed
+- Caching API responses to reduce load
+
+The scheduler uses APScheduler for task scheduling and httpx for HTTP requests.
+"""
+
 import logging
 
 import httpx
@@ -26,9 +38,17 @@ CACHE_DURATION_SECONDS = (
 
 
 def fetch_and_update_job_statuses(flask_app):
-    """
-    Fetches job statuses from the API and updates the DuckDB database.
-    This function is called by the scheduler.
+    """Fetches job statuses from the API and updates the database.
+
+    This function is called by the scheduler every 30 seconds. It:
+    1. Fetches job statuses from the API
+    2. Updates existing incidents if their status has changed
+    3. Creates new incidents for failed jobs
+    4. Resolves incidents when jobs are fixed
+    5. Updates the last refresh time in the database
+
+    Args:
+        flask_app: The Flask application instance, used for configuration and context
     """
     global api_data_cache
     current_time = now_utc()
@@ -57,10 +77,36 @@ def fetch_and_update_job_statuses(flask_app):
                 api_jobs = response.json()
                 api_data_cache["data"] = api_jobs
                 api_data_cache["last_fetched"] = current_time
+
+                # Update last refresh time in the database
+                conn = get_db_connection()
+                try:
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS app_state (
+                            key VARCHAR PRIMARY KEY,
+                            value TIMESTAMPTZ
+                        );
+                        """
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO app_state (key, value) 
+                        VALUES ('last_refresh_time', ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                        """,
+                        (current_time,),
+                    )
+                    conn.commit()
+                except Exception as e:
+                    scheduler_logger.error(
+                        f"Error updating last refresh time: {e}"
+                    )
+                finally:
+                    conn.close()
         except httpx.RequestError as e:
             scheduler_logger.error(f"Error fetching job statuses from API: {e}")
-            # Potentially load last known good data or just skip update
-            return  # Don't proceed if API fetch fails
+            return
         except Exception as e:
             scheduler_logger.error(f"Unexpected error during API fetch: {e}")
             return
@@ -215,29 +261,6 @@ def fetch_and_update_job_statuses(flask_app):
             conn.commit()
             scheduler_logger.info("Job status update complete.")
 
-            # Update last refresh time in the database
-            try:
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS app_state (
-                        key VARCHAR PRIMARY KEY,
-                        value TIMESTAMPTZ
-                    );
-                    """
-                )
-                conn.execute(
-                    """
-                    INSERT INTO app_state (key, value) 
-                    VALUES ('last_refresh_time', ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-                    """,
-                    (current_time,),
-                )
-                conn.commit()
-                scheduler_logger.info("Updated last_refresh_time in database.")
-            except Exception as e:
-                scheduler_logger.error(f"Error updating last_refresh_time: {e}")
-
         except Exception as e:
             conn.rollback()
             scheduler_logger.error(
@@ -248,7 +271,11 @@ def fetch_and_update_job_statuses(flask_app):
 
 
 def schedule_api_fetch(flask_app):
-    """Adds the job to the scheduler if not already scheduled."""
+    """Adds the job to the scheduler if not already scheduled.
+
+    Args:
+        flask_app: The Flask application instance
+    """
     job_id = "fetch_job_statuses"
     if not scheduler.get_job(job_id):
         # Fetch initial data immediately, then schedule
@@ -269,6 +296,11 @@ def schedule_api_fetch(flask_app):
 
 
 def start_scheduler(flask_app):
+    """Starts the background scheduler.
+
+    Args:
+        flask_app: The Flask application instance
+    """
     if not scheduler.running:
         schedule_api_fetch(flask_app)  # Add the job
         scheduler.start()
@@ -278,6 +310,7 @@ def start_scheduler(flask_app):
 
 
 def stop_scheduler():
+    """Stops the background scheduler."""
     if scheduler.running:
         scheduler.shutdown()
         scheduler_logger.info("Background scheduler stopped.")

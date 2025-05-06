@@ -1,4 +1,15 @@
-# app.py
+"""Flask application for the FIC Dashboard.
+
+This module implements a Flask web application that provides a dashboard for monitoring
+and managing incidents. It includes features for:
+- Displaying active and resolved incidents
+- Managing incident responses
+- Tracking incident statistics
+- Auto-refreshing data from external APIs
+
+The application uses DuckDB for data storage and APScheduler for background tasks.
+"""
+
 import datetime
 import os
 
@@ -34,6 +45,11 @@ last_refresh_time_g = None
 
 
 def get_current_time_str():
+    """Gets the current time in UTC as a formatted string.
+
+    Returns:
+        str: Current time in format 'YYYY-MM-DD HH:MM:SS UTC'
+    """
     return datetime.datetime.now(pytz.timezone("UTC")).strftime(
         "%Y-%m-%d %H:%M:%S %Z"
     )
@@ -41,11 +57,13 @@ def get_current_time_str():
 
 @app.before_request
 def before_request():
+    """Sets up database connection before each request."""
     g.db = get_db_connection()
 
 
 @app.teardown_request
 def teardown_request(exception):
+    """Closes database connection after each request."""
     db = getattr(g, "db", None)
     if db is not None:
         db.close()
@@ -53,6 +71,11 @@ def teardown_request(exception):
 
 # --- Helper Functions ---
 def get_engineers():
+    """Retrieves all engineers from the database.
+
+    Returns:
+        list: List of dictionaries containing engineer information (id, name, on_call_level)
+    """
     results = g.db.execute(
         "SELECT id, name, on_call_level FROM engineers ORDER BY on_call_level, name"
     ).fetchall()
@@ -63,8 +86,12 @@ def get_engineers():
 
 
 def get_active_incidents():
-    # Active incidents are those not yet resolved
-    # Sorted by status (Critical > Error > Warning), then by first_detected_at (oldest first)
+    """Retrieves all active (unresolved) incidents from the database.
+
+    Returns:
+        list: List of dictionaries containing incident information, sorted by status
+        (Critical > Error > Warning) and then by detection time (oldest first)
+    """
     conn = g.db
     query = """
     SELECT 
@@ -118,6 +145,17 @@ def get_active_incidents():
 
 
 def get_stats_for_week():
+    """Calculates incident statistics for the current week.
+
+    Returns:
+        dict: Dictionary containing:
+            - daily_counts_labels: List of day labels (Mon-Fri)
+            - daily_counts_data: List of incident counts per day
+            - total_this_week: Total incidents this week
+            - resolved_this_week: Total resolved incidents this week
+            - avg_respond_time_seconds: Average response time
+            - avg_resolve_time_seconds: Average resolution time
+    """
     conn = g.db
     # Monday of the current week
     today = now_utc().date()
@@ -199,6 +237,12 @@ def get_stats_for_week():
 
 
 def get_recent_resolved_incidents():
+    """Retrieves recently resolved incidents from the database.
+
+    Returns:
+        list: List of dictionaries containing information about recently resolved incidents,
+        limited to the 20 most recent ones.
+    """
     conn = g.db
     today = now_utc().date()
     start_of_week = today - datetime.timedelta(days=today.weekday())
@@ -230,6 +274,11 @@ def get_recent_resolved_incidents():
 # --- Routes ---
 @app.route("/")
 def index():
+    """Main dashboard page.
+
+    Returns:
+        str: Rendered HTML template with dashboard data
+    """
     global last_refresh_time_g
     if "last_refresh_time" not in session or last_refresh_time_g is None:
         session["last_refresh_time"] = "Never"  # Initial state
@@ -274,7 +323,11 @@ def index():
 
 @app.route("/get-last-refresh-time")
 def get_last_refresh_time():
-    """API endpoint to get the last refresh time from the database."""
+    """API endpoint to get the last refresh time from the database.
+
+    Returns:
+        dict: JSON response containing the last refresh time
+    """
     conn = get_db_connection()
     try:
         result = conn.execute(
@@ -291,8 +344,14 @@ def get_last_refresh_time():
     finally:
         conn.close()
 
+
 @app.route("/refresh-data", methods=["POST"])
 def refresh_data():
+    """Manually triggers a data refresh and updates the last refresh time.
+
+    Returns:
+        Response: Redirect to the index page
+    """
     global last_refresh_time_g
     # This endpoint could potentially trigger the scheduler to run immediately
     # For now, it just updates the 'last_refresh_time' for display
@@ -302,7 +361,7 @@ def refresh_data():
     # from scheduler import fetch_and_update_job_statuses # careful with imports
     # fetch_and_update_job_statuses(app)
     # But for simplicity, we assume scheduler is running.
-    
+
     # Update the last_refresh_time in the database
     current_time = now_utc()
     conn = get_db_connection()
@@ -328,7 +387,7 @@ def refresh_data():
         print(f"Error updating last refresh time: {e}")
     finally:
         conn.close()
-    
+
     last_refresh_time_g = get_current_time_str()
     session["last_refresh_time"] = last_refresh_time_g
     return redirect(url_for("index"))
@@ -336,6 +395,11 @@ def refresh_data():
 
 @app.route("/add-engineer", methods=["POST"])
 def add_engineer():
+    """Adds a new engineer to the database.
+
+    Returns:
+        Response: Redirect to the index page
+    """
     name = request.form.get("name")
     level = request.form.get("level")
     if name and level:
@@ -356,6 +420,14 @@ def add_engineer():
 
 @app.route("/delete-engineer/<int:engineer_id>", methods=["POST"])
 def delete_engineer(engineer_id):
+    """Deletes an engineer from the database.
+
+    Args:
+        engineer_id (int): ID of the engineer to delete
+
+    Returns:
+        Response: Redirect to the index page
+    """
     # Consider what happens if engineer is assigned to an incident.
     # For now, we'll allow deletion. Could add a check or set assigned incidents to NULL.
     g.db.execute(
@@ -369,6 +441,14 @@ def delete_engineer(engineer_id):
 
 @app.route("/respond-incident/<int:incident_id>", methods=["POST"])
 def respond_incident(incident_id):
+    """Updates an incident with response information.
+
+    Args:
+        incident_id (int): ID of the incident to update
+
+    Returns:
+        Response: Redirect to the index page
+    """
     engineer_id = request.form.get("engineer_id")
     priority = request.form.get("priority")
     inc_number = request.form.get("inc_number", None)  # Optional
@@ -396,6 +476,14 @@ def respond_incident(incident_id):
 
 @app.route("/update-incident-priority/<int:incident_id>", methods=["POST"])
 def update_incident_priority(incident_id):
+    """Updates the priority of an incident.
+
+    Args:
+        incident_id (int): ID of the incident to update
+
+    Returns:
+        Response: Redirect to the index page
+    """
     priority = request.form.get("priority")
     if priority:
         g.db.execute(
@@ -408,6 +496,14 @@ def update_incident_priority(incident_id):
 
 @app.route("/update-inc-link/<int:incident_id>", methods=["POST"])
 def update_inc_link(incident_id):
+    """Updates the incident number and/or link for an incident.
+
+    Args:
+        incident_id (int): ID of the incident to update
+
+    Returns:
+        Response: Redirect to the index page
+    """
     inc_number = request.form.get("inc_number")
     inc_link = request.form.get("inc_link")
     if inc_number or inc_link:  # Allow updating one or both
@@ -430,6 +526,14 @@ def update_inc_link(incident_id):
 
 @app.route("/resolve-incident/<int:incident_id>", methods=["POST"])
 def resolve_incident(incident_id):
+    """Marks an incident as resolved.
+
+    Args:
+        incident_id (int): ID of the incident to resolve
+
+    Returns:
+        Response: Redirect to the index page
+    """
     # This is a manual resolve button.
     # If an incident is not picked up by the API as "OK" or gone,
     # SREs can manually resolve it.

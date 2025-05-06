@@ -1,9 +1,22 @@
-// static/js/main.js
+/**
+ * Main JavaScript file for the FIC Dashboard.
+ * 
+ * This file handles all client-side functionality including:
+ * - Time updates and display
+ * - Incident duration calculations
+ * - Modal interactions
+ * - Chart rendering
+ * - Auto-refresh functionality
+ */
+
 document.addEventListener('DOMContentLoaded', function () {
     // --- Time Updates ---
     const currentTimeElem = document.getElementById('current-time');
     const lastRefreshTimeElem = document.getElementById('last-refresh-time');
-    
+
+    /**
+     * Updates the current time display with the local time.
+     */
     function updateCurrentTime() {
         if (currentTimeElem) {
             currentTimeElem.textContent = new Date().toLocaleString('en-US', {
@@ -14,8 +27,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     updateCurrentTime();
     setInterval(updateCurrentTime, 1000);
-    
-    // Fetch and update the last refresh time from the server
+
+    /**
+     * Fetches and updates the last refresh time from the server.
+     */
     function updateLastRefreshTime() {
         fetch('/get-last-refresh-time')
             .then(response => {
@@ -33,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.error('Error fetching last refresh time:', error);
             });
     }
-    
+
     // Update last refresh time initially and then every 10 seconds
     updateLastRefreshTime();
     setInterval(updateLastRefreshTime, 10000);
@@ -53,7 +68,12 @@ document.addEventListener('DOMContentLoaded', function () {
     let now_ts_server = serverNowUTCTimestamp * 1000; // Convert Python timestamp (seconds) to JS (ms)
     let client_server_time_diff_ms = now_ts_client - now_ts_server;
 
-
+    /**
+     * Formats a duration in seconds into a human-readable string.
+     * 
+     * @param {number} seconds - The duration in seconds
+     * @returns {string} Formatted duration string (e.g., "2d 3h 45m 30s")
+     */
     function formatDuration(seconds) {
         if (seconds < 0) seconds = 0;
         const d = Math.floor(seconds / (3600 * 24));
@@ -63,6 +83,9 @@ document.addEventListener('DOMContentLoaded', function () {
         return `${d > 0 ? d + 'd ' : ''}${h > 0 || d > 0 ? h + 'h ' : ''}${m > 0 || h > 0 || d > 0 ? m + 'm ' : ''}${s}s`;
     }
 
+    /**
+     * Updates incident durations and applies flashing effect for critical incidents.
+     */
     function updateDurationsAndFlash() {
         const now = Math.floor((Date.now() - client_server_time_diff_ms) / 1000); // Adjusted current time in seconds
 
@@ -142,6 +165,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const respondModalIncidentId = document.getElementById('respondModalIncidentId');
     const respondModalJobName = document.getElementById('respondModalJobName');
 
+    /**
+     * Opens the respond modal for a specific incident.
+     * 
+     * @param {number} incidentId - The ID of the incident
+     * @param {string} jobName - The name of the job
+     */
     window.openRespondModal = function (incidentId, jobName) {
         if (!respondModal || !respondModalForm || !respondModalIncidentId || !respondModalJobName) {
             console.error('Respond modal elements not found');
@@ -160,6 +189,9 @@ document.addEventListener('DOMContentLoaded', function () {
         respondModal.classList.remove('hidden');
     }
 
+    /**
+     * Closes the respond modal and resets its form.
+     */
     window.closeRespondModal = function () {
         if (!respondModal || !respondModalForm) {
             console.error('Respond modal elements not found');
@@ -176,6 +208,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const incLinkModalIncNumber = document.getElementById('incLinkModalIncNumber');
     const incLinkModalIncLink = document.getElementById('incLinkModalIncLink');
 
+    /**
+     * Opens the INC link modal for a specific incident.
+     * 
+     * @param {number} incidentId - The ID of the incident
+     * @param {string} currentIncNumber - Current incident number
+     * @param {string} currentIncLink - Current incident link
+     */
     window.openIncLinkModal = function (incidentId, currentIncNumber, currentIncLink) {
         if (!incLinkModal || !incLinkModalForm || !incLinkModalIncidentId || !incLinkModalIncNumber || !incLinkModalIncLink) {
             console.error('INC Link modal elements not found');
@@ -190,6 +229,9 @@ document.addEventListener('DOMContentLoaded', function () {
         incLinkModal.classList.remove('hidden');
     }
 
+    /**
+     * Closes the INC link modal and resets its form.
+     */
     window.closeIncLinkModal = function () {
         if (!incLinkModal || !incLinkModalForm) {
             console.error('INC Link modal elements not found');
@@ -203,6 +245,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const addEngineerModal = document.getElementById('addEngineerModal');
     const addEngineerForm = document.querySelector('#addEngineerModal form');
 
+    /**
+     * Opens the add engineer modal.
+     */
     window.openAddEngineerModal = function () {
         if (!addEngineerModal || !addEngineerForm) {
             console.error('Add Engineer modal elements not found');
@@ -213,6 +258,9 @@ document.addEventListener('DOMContentLoaded', function () {
         addEngineerModal.classList.remove('hidden');
     }
 
+    /**
+     * Closes the add engineer modal and resets its form.
+     */
     window.closeAddEngineerModal = function () {
         if (!addEngineerModal || !addEngineerForm) {
             console.error('Add Engineer modal elements not found');
