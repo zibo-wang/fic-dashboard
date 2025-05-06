@@ -1,0 +1,50 @@
+/* static/css/style.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles can go here */
+body {
+  @apply bg-tn-bg text-tn-text;
+}
+
+.table-fixed-layout {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table-fixed-layout th,
+.table-fixed-layout td {
+  overflow-wrap: break-word;
+  /* or word-break: break-all; */
+}
+
+.flash-red {
+  animation: flashRedAnimation 1s infinite;
+}
+
+@keyframes flashRedAnimation {
+
+  0%,
+  100% {
+    background-color: transparent;
+  }
+
+  50% {
+    background-color: #f7768e;
+    color: #1a1b26;
+  }
+}
+
+/* Modal basic styling */
+.modal {
+  @apply fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden;
+}
+
+.modal-content {
+  @apply bg-tn-bg-alt p-6 rounded-lg shadow-xl max-w-md w-full;
+}
+
+.modal-close {
+  @apply absolute top-2 right-2 text-tn-comment hover:text-tn-text;
+}

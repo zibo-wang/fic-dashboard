@@ -1,0 +1,20 @@
+{
+    "name": "fic-dashboard",
+    "version": "1.0.0",
+    "description": "Describe your project here.",
+    "main": "tailwind.config.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "tailwind:build": "tailwindcss -i ./static/css/style.css -o ./static/css/output.css",
+        "tailwind:watch": "tailwindcss -i ./static/css/style.css -o ./static/css/output.css --watch"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@tailwindcss/cli": "^4.1.5",
+        "autoprefixer": "^10.4.21",
+        "postcss": "^8.5.3",
+        "tailwindcss": "3.4.1"
+    }
+}

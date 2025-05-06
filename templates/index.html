@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRE Dashboard</title>
+    <link href="{{ url_for('static', filename='css/output.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const weeklyStats = JSON.parse('{{ stats| tojson | safe }}');
+    </script>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: #1a1b26;
+            margin: 10% auto;
+            padding: 1rem;
+            border: 1px solid #565f89;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 0.5rem;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            right: 0.5rem;
+            top: 0.5rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #565f89;
+        }
+
+        .modal-close:hover {
+            color: #7aa2f7;
+        }
+    </style>
+</head>
+
+<body class="bg-tn-bg text-tn-text min-h-screen flex flex-col lg:flex-row">
+    <!-- Sidebar -->
+    <aside class="lg:w-64 w-full bg-tn-bg-alt p-4 flex flex-col">
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-tn-purple mb-2">SRE Dashboard</h2>
+            <div class="text-sm text-tn-comment">
+                <p>Current Time (UTC): <span id="current-time">{{ current_time_utc }}</span></p>
+                <p>Last Refresh: <span id="last-refresh-time">{{ last_refresh_time }}</span></p>
+            </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="mb-6">
+            <h3 class="text-md font-semibold text-tn-cyan mb-2">Summary</h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between items-center">
+                    <span>Active Issues:</span>
+                    <span class="font-bold">{{ issue_count }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>Responded:</span>
+                    <span class="font-bold text-tn-green">{{ responded_count }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>Pending:</span>
+                    <span class="font-bold text-tn-red">{{ pending_count }}</span>
+                </div>
+            </div>
+            <form action="{{ url_for('refresh_data') }}" method="POST" class="mt-3">
+                <button type="submit"
+                    class="w-full bg-tn-blue hover:bg-tn-purple text-white py-1 px-3 rounded text-sm">Refresh
+                    Data</button>
+            </form>
+        </div>
+
+        <!-- On-Call Engineers -->
+        <div>
+            <h3 class="text-md font-semibold text-tn-cyan mb-2">On Call</h3>
+            <div class="space-y-2 text-sm">
+                {% for engineer in engineers %}
+                <div class="flex justify-between items-center">
+                    <span>{{ engineer.name }} ({{ engineer.on_call_level }})</span>
+                    <form action="{{ url_for('delete_engineer', engineer_id=engineer.id) }}" method="POST"
+                        onsubmit="return confirm('Delete {{engineer.name}}?');">
+                        <button type="submit" class="text-tn-red hover:text-tn-orange text-xs">Delete</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            <form action="{{ url_for('add_engineer') }}" method="POST" class="mt-3 space-y-2">
+                <input type="text" name="name" placeholder="Engineer Name" required
+                    class="w-full bg-tn-bg border border-tn-comment rounded p-1 text-sm focus:ring-tn-blue focus:border-tn-blue">
+                <select name="level" required
+                    class="w-full bg-tn-bg border border-tn-comment rounded p-1 text-sm focus:ring-tn-blue focus:border-tn-blue">
+                    <option value="L1">L1</option>
+                    <option value="L2">L2</option>
+                </select>
+                <button type="submit"
+                    class="w-full bg-tn-green hover:bg-tn-blue text-white py-1 px-3 rounded text-sm">Add
+                    Engineer</button>
+            </form>
+        </div>
+        <div class="text-xs text-tn-comment mt-auto pt-4">
+            Dashboard data auto-refreshes from API every 30s.
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-4 lg:p-6 overflow-x-auto">
+        <!-- Top Stats Dashboard -->
+        <section id="stats-dashboard" class="mb-6">
+            <h1 class="text-xl lg:text-2xl font-bold text-tn-purple mb-4">Weekly Incident Overview</h1>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
+                    <h3 class="text-tn-cyan">Incidents This Week</h3>
+                    <p class="text-2xl lg:text-3xl font-bold">{{ stats.total_this_week }}</p>
+                </div>
+                <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
+                    <h3 class="text-tn-green">Resolved This Week</h3>
+                    <p class="text-2xl lg:text-3xl font-bold">{{ stats.resolved_this_week }}</p>
+                </div>
+                <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
+                    <h3 class="text-tn-orange">Avg. Respond Time</h3>
+                    <p class="text-2xl lg:text-3xl font-bold"><span
+                            id="avg-respond-time">{{ "%.2f" | format(stats.avg_respond_time_seconds / 60 if stats.avg_respond_time_seconds else 0) }}</span>
+                        min</p>
+                </div>
+                <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
+                    <h3 class="text-tn-yellow">Avg. Resolve Time</h3>
+                    <p class="text-2xl lg:text-3xl font-bold"><span
+                            id="avg-resolve-time">{{ "%.2f" | format(stats.avg_resolve_time_seconds / 3600 if stats.avg_resolve_time_seconds else 0) }}</span>
+                        hr</p>
+                </div>
+            </div>
+            <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
+                <h3 class="text-tn-blue mb-2">Incidents by Day (Mon-Fri)</h3>
+                <div class="w-full overflow-x-auto">
+                    <canvas id="incidentsByDayChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Incident Tables -->
+        <section id="incident-tables" class="space-y-6">
+            <!-- Pending Response -->
+            <div>
+                <h2 class="text-lg lg:text-xl font-semibold text-tn-red mb-3">Pending Response
+                    ({{ pending_incidents|length }})</h2>
+                {% if pending_incidents %}
+                <div class="overflow-x-auto bg-tn-bg-alt rounded-lg shadow">
+                    <table class="min-w-full table-fixed-layout">
+                        <thead class="bg-tn-nightBlue">
+                            <tr>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/6">
+                                    Job Name</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Status</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Priority</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Logs</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/6">
+                                    Duration</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-2/6">
+                                    Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-tn-comment">
+                            {% for incident in pending_incidents %}
+                            <tr id="incident-row-{{ incident.id }}"
+                                data-first-detected="{{ incident.first_detected_at.timestamp() }}"
+                                data-status="{{ incident.status }}" data-responded="false">
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm"><a href="{{ incident.log_url or '#' }}"
+                                        target="_blank" class="hover:text-tn-blue">{{ incident.job_name }}</a></td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if incident.status == 'CRITICAL' %} bg-tn-red text-black
+                                        {% elif incident.status == 'ERROR' %} bg-tn-orange text-black
+                                        {% elif incident.status == 'WARNING' %} bg-tn-yellow text-black
+                                        {% endif %}">
+                                        {{ incident.status }}
+                                    </span>
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <form action="{{ url_for('respond_incident', incident_id=incident.id) }}"
+                                        method="POST" class="respond-form hidden">
+                                        <input type="hidden" name="inc_number" class="inc-number-input">
+                                        <input type="hidden" name="inc_link" class="inc-link-input">
+                                    </form>
+                                    {{ incident.priority if incident.priority else 'N/A' }}
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    {% if incident.log_url %}
+                                    <a href="{{ incident.log_url }}" target="_blank"
+                                        class="text-tn-blue hover:underline">📄 Log</a>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm incident-duration">-</td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <button onclick="openRespondModal({{ incident.id }}, '{{ incident.job_name }}')"
+                                        class="bg-tn-green hover:bg-tn-blue text-white py-1 px-2 lg:px-3 rounded text-xs">Respond</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-tn-comment">No incidents pending response. Well done!</p>
+                {% endif %}
+            </div>
+
+            <!-- Working In Progress -->
+            <div>
+                <h2 class="text-lg lg:text-xl font-semibold text-tn-green mb-3">Work In Progress
+                    ({{ wip_incidents|length }})</h2>
+                {% if wip_incidents %}
+                <div class="overflow-x-auto bg-tn-bg-alt rounded-lg shadow">
+                    <table class="min-w-full table-fixed-layout">
+                        <thead class="bg-tn-nightBlue">
+                            <tr>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-3/12">
+                                    Job Name</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Status</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Priority</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Logs</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-2/12">
+                                    Responder</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Duration</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-2/12">
+                                    INC Link</th>
+                                <th
+                                    class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider w-1/12">
+                                    Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-tn-comment">
+                            {% for incident in wip_incidents %}
+                            <tr id="incident-row-{{ incident.id }}"
+                                data-first-detected="{{ incident.first_detected_at.timestamp() }}"
+                                data-status="{{ incident.status }}" data-responded="true">
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm"><a href="{{ incident.log_url or '#' }}"
+                                        target="_blank" class="hover:text-tn-blue">{{ incident.job_name }}</a></td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if incident.status == 'CRITICAL' %} bg-tn-red text-black
+                                        {% elif incident.status == 'ERROR' %} bg-tn-orange text-black
+                                        {% elif incident.status == 'WARNING' %} bg-tn-yellow text-black
+                                        {% endif %}">
+                                        {{ incident.status }}
+                                    </span>
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <form id="priority-form-{{ incident.id }}"
+                                        action="{{ url_for('update_incident_priority', incident_id=incident.id) }}"
+                                        method="POST" class="inline">
+                                        <select name="priority" onchange="this.form.submit()"
+                                            class="bg-tn-bg border border-tn-comment rounded p-1 text-xs focus:ring-tn-blue focus:border-tn-blue">
+                                            {% for p in priorities %}
+                                            <option value="{{ p }}" {% if incident.priority == p %}selected{% endif %}>
+                                                {{ p }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </form>
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    {% if incident.log_url %}
+                                    <a href="{{ incident.log_url }}" target="_blank"
+                                        class="text-tn-blue hover:underline">📄 Log</a>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.responding_engineer_name }}
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm incident-duration">-</td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    {% if incident.inc_number or incident.inc_link %}
+                                    <a href="{{ incident.inc_link or '#' }}" target="_blank"
+                                        class="text-tn-blue hover:underline">{{ incident.inc_number or 'Link' }}</a>
+                                    <button
+                                        onclick="openIncLinkModal({{ incident.id }}, '{{ incident.inc_number }}', '{{ incident.inc_link }}')"
+                                        class="ml-1 text-xs text-tn-comment hover:text-tn-text">(edit)</button>
+                                    {% else %}
+                                    <button onclick="openIncLinkModal({{ incident.id }}, '', '')"
+                                        class="text-xs text-tn-blue hover:underline">(add INC)</button>
+                                    {% endif %}
+                                </td>
+                                <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                    <form action="{{ url_for('resolve_incident', incident_id=incident.id) }}"
+                                        method="POST" class="inline"
+                                        onsubmit="return confirm('Manually resolve {{incident.job_name}}?');">
+                                        <button type="submit"
+                                            class="bg-tn-yellow hover:bg-tn-orange text-black py-1 px-2 rounded text-xs">Resolve</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-tn-comment">No incidents currently being worked on.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Recent Incidents Table (Resolved) -->
+        <section id="recent-incidents" class="mt-6">
+            <h2 class="text-lg lg:text-xl font-semibold text-tn-blue mb-3">Recent Resolved Incidents (This Week)</h2>
+            {% if recent_resolved %}
+            <div class="overflow-x-auto bg-tn-bg-alt rounded-lg shadow">
+                <table class="min-w-full">
+                    <thead class="bg-tn-nightBlue">
+                        <tr>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Job Name</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Status</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Priority</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Detected</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Responded</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Resolved</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Responder</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                INC #</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-tn-comment">
+                        {% for incident in recent_resolved %}
+                        <tr>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.job_name }}</td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.status }}</td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.priority or '-' }}</td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm"
+                                title="{{ incident.first_detected_at.strftime('%Y-%m-%d %H:%M:%S %Z') if incident.first_detected_at else '' }}">
+                                {{ incident.first_detected_at.strftime('%b %d, %H:%M') if incident.first_detected_at else '-' }}
+                            </td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm"
+                                title="{{ incident.responded_at.strftime('%Y-%m-%d %H:%M:%S %Z') if incident.responded_at else '' }}">
+                                {{ incident.responded_at.strftime('%b %d, %H:%M') if incident.responded_at else '-' }}
+                            </td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm"
+                                title="{{ incident.resolved_at.strftime('%Y-%m-%d %H:%M:%S %Z') if incident.resolved_at else '' }}">
+                                {{ incident.resolved_at.strftime('%b %d, %H:%M') if incident.resolved_at else '-' }}
+                            </td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                {{ incident.responding_engineer_name or '-' }}</td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.inc_number or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-tn-comment">No incidents resolved this week yet.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <!-- Respond Modal -->
+    <div id="respondModal" class="modal">
+        <div class="modal-content">
+            <button onclick="closeRespondModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Respond to Incident: <span
+                    id="respondModalJobName"></span></h3>
+            <form id="respondModalForm" method="POST">
+                <input type="hidden" name="incident_id" id="respondModalIncidentId">
+                <div class="mb-4">
+                    <label for="respondModalEngineer" class="block text-sm font-medium text-tn-text">Assign
+                        Engineer:</label>
+                    <select id="respondModalEngineer" name="engineer_id" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                        {% for engineer in engineers %}
+                        <option value="{{ engineer.id }}">{{ engineer.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label for="respondModalPriority" class="block text-sm font-medium text-tn-text">Set
+                        Priority:</label>
+                    <select id="respondModalPriority" name="priority" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                        {% for p in priorities %}
+                        <option value="{{ p }}">{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label for="respondModalIncNumber" class="block text-sm font-medium text-tn-text">INC Number
+                        (Optional):</label>
+                    <input type="text" id="respondModalIncNumber" name="inc_number"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div class="mb-4">
+                    <label for="respondModalIncLink" class="block text-sm font-medium text-tn-text">INC Link
+                        (Optional):</label>
+                    <input type="url" id="respondModalIncLink" name="inc_link"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeRespondModal()"
+                        class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Cancel</button>
+                    <button type="submit"
+                        class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Confirm
+                        Response</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- INC Link Modal -->
+    <div id="incLinkModal" class="modal">
+        <div class="modal-content">
+            <button onclick="closeIncLinkModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Update INC Link</h3>
+            <form id="incLinkModalForm" method="POST">
+                <input type="hidden" name="incident_id" id="incLinkModalIncidentId">
+                <div class="mb-4">
+                    <label for="incLinkModalIncNumber" class="block text-sm font-medium text-tn-text">INC
+                        Number:</label>
+                    <input type="text" id="incLinkModalIncNumber" name="inc_number"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div class="mb-4">
+                    <label for="incLinkModalIncLink" class="block text-sm font-medium text-tn-text">INC Link:</label>
+                    <input type="url" id="incLinkModalIncLink" name="inc_link"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeIncLinkModal()"
+                        class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Cancel</button>
+                    <button type="submit"
+                        class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Save
+                        INC Details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const serverNowUTCTimestamp = {{ now_utc_timestamp }};
+    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>

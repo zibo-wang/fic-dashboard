@@ -1,0 +1,19 @@
+Suppose you are a Site Reliability Engineer, you need to implement a dashboard for the automations you manage. You need following fetaures:
+1. on the left panel, at the top, you need to show the current time, the last refresh time, and a button that can manually refresh the page.
+2. on the left panel, after the time, you need to show how many jobs are having issues, how many have been responded, and how many pending. pending number in red.
+3. on the left panel, after the status, add a part show the current L1 and L2 engineers on call, make sure you can add or delete engineers.
+4. The main part, on the top, show a dashboard of how many incidents happening for current week (monday to friday), totally how many incidents has happened this week and how many resolved. Display the average resolve time and average respond time. Make good visualisations of those stats.
+5. The main part, display a table, have columns, job name, which the name is also a clickable link. Second column status, if it is critical, error or warning. ignore if it is log. Third column priority level, engineer should be able to allocate an level for it, P1 - P4. fourth column, log, just an emoji and a "log" text with clickable link, this will hook to the link url. next column which engineer is responding to the incident. - for if it is not being responded. next column, a timer of how long the incident has happened. next column, inc link, make user prompt to be able to add an inc number and a link, which when the job is responded, the incident page. next column, a button that says respond, after click, prompt to select an engineer who is responding to it, and require to add a priority level. make sure after a priority level is added, we are able to edit it, because we need to be able to escalate or degrade. 
+6. next part, display a table for recent incidents, it will display the incidents happened for this week.
+7. For stats, it is essential to save who respond to which incident, the level, when the incident is first detected, when someone responded to it, and when it is resloved. 
+8. If no one responding to a critical or error job for longer than 1 min, flash red for the row.
+9. Always rank the job with critical level, make sure the most critical one at the top.
+10. The main dashboard can be splited into two parts, one part display the incidents that is pending response, other is working in progress incidents.
+11. Use duckdb to save the information needed.
+12. use flask and any suitable css framework for styling (e.g. tailwindcss, bootstrap).
+13. Use tokyo night color scheme.
+14. The page will need to fetch the job status from API in a given time default 30s
+15. use async way to fetch apis concurrently, cache necessary data so that we boost refresh time.
+16. make some mock api responses in a separate python file for testing.
+17. Make sure everything are managed with sessions or any other method to ensure multiple user can use at the same time. there will be multiple users using the same page.
+18. make the page responsive
