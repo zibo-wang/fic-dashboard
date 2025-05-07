@@ -213,9 +213,9 @@ def get_stats_for_week():
     ).fetchone()[0]
 
     avg_resolve_time_seconds_q = f"""
-    SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - first_detected_at)))
+    SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - responded_at)))
     FROM incidents
-    WHERE resolved_at IS NOT NULL AND first_detected_at IS NOT NULL
+    WHERE resolved_at IS NOT NULL AND responded_at IS NOT NULL
       AND first_detected_at >= '{start_of_week}' AND first_detected_at <= '{end_of_week}';
     """
     avg_resolve_time_seconds = conn.execute(

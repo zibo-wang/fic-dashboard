@@ -211,9 +211,18 @@ def fetch_and_update_job_statuses(flask_app):
                         scheduler_logger.info(
                             f"Incident {job_api_id} resolved via API (status: {status})."
                         )
+                        # For pending incidents (no responder), set responded_at to first_detected_at
+                        # This ensures they appear in history with proper timing
                         conn.execute(
                             """
-                            UPDATE incidents SET resolved_at = ?, status = ?, last_api_update = ?
+                            UPDATE incidents 
+                            SET resolved_at = ?, 
+                                status = ?, 
+                                last_api_update = ?,
+                                responded_at = CASE 
+                                    WHEN responded_at IS NULL THEN first_detected_at 
+                                    ELSE responded_at 
+                                END
                             WHERE job_api_id = ? AND resolved_at IS NULL
                         """,
                             (current_time, status, current_time, job_api_id),
