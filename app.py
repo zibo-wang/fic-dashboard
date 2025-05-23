@@ -27,7 +27,12 @@ from flask import (
     session,
     url_for,
 )
-from scheduler import schedule_api_fetch, start_scheduler, stop_scheduler
+from scheduler import (
+    api_error_state,
+    start_scheduler,
+    stop_scheduler,
+    fetch_and_update_job_statuses,
+)
 
 load_dotenv()  # For MOCK_API_URL
 
@@ -40,19 +45,15 @@ app = Flask(__name__)
 app.secret_key = APP_SECRET_KEY
 app.config["MOCK_API_URL"] = MOCK_API_URL
 
-# Global variable to store last refresh time for display
-last_refresh_time_g = None
-
 
 def get_current_time_str():
-    """Gets the current time in UTC as a formatted string.
+    """Gets the current time in Sydney timezone as a formatted string.
 
     Returns:
-        str: Current time in format 'YYYY-MM-DD HH:MM:SS UTC'
+        str: Current time in format 'HH:MM:SS'
     """
-    return datetime.datetime.now(pytz.timezone("UTC")).strftime(
-        "%Y-%m-%d %H:%M:%S %Z"
-    )
+    sydney_tz = pytz.timezone("Australia/Sydney")
+    return datetime.datetime.now(sydney_tz).strftime("%H:%M:%S")
 
 
 @app.before_request
@@ -163,7 +164,6 @@ def get_stats_for_week():
     end_of_week = start_of_week + datetime.timedelta(days=6)  # Sunday end
 
     # Incidents per day (Mon-Fri for display, but data can be whole week)
-    # For display, we care about Mon-Fri, but let's query the whole week for completeness
     incidents_by_day_q = f"""
     SELECT strftime(first_detected_at, '%Y-%m-%d') as day, COUNT(*) as count
     FROM incidents
@@ -181,11 +181,7 @@ def get_stats_for_week():
     for day_str, count in incidents_by_day_raw:
         daily_counts[day_str] = count
 
-    # Filter for Mon-Fri for the chart specifically
-    # chart_labels = [(start_of_week + datetime.timedelta(days=i)).strftime('%a') for i in range(5)] # Mon-Fri
-    # chart_data = [daily_counts.get((start_of_week + datetime.timedelta(days=i)).strftime('%Y-%m-%d'), 0) for i in range(5)]
-
-    # Let's do it more robustly to handle missing days from query
+    # Filter for Mon-Fri for the chart
     chart_labels = []
     chart_data = []
     for i in range(5):  # Mon to Fri
@@ -253,7 +249,7 @@ def get_recent_resolved_incidents():
     WHERE i.resolved_at IS NOT NULL AND i.resolved_at >= '{start_of_week}'
     ORDER BY i.resolved_at DESC
     LIMIT 20;
-    """  # Limit to recent 20 for brevity
+    """
     results = conn.execute(query).fetchall()
     # Convert tuples to dictionaries
     return [
@@ -271,98 +267,42 @@ def get_recent_resolved_incidents():
     ]
 
 
-# --- Routes ---
-@app.route("/")
-def index():
-    """Main dashboard page.
-
-    Returns:
-        str: Rendered HTML template with dashboard data
-    """
-    global last_refresh_time_g
-    if "last_refresh_time" not in session or last_refresh_time_g is None:
-        session["last_refresh_time"] = "Never"  # Initial state
-        last_refresh_time_g = "Never"
-
-    all_active_incidents = get_active_incidents()
-    pending_incidents = [
-        inc
-        for inc in all_active_incidents
-        if inc["responding_engineer_name"] is None
-    ]
-    wip_incidents = [
-        inc
-        for inc in all_active_incidents
-        if inc["responding_engineer_name"] is not None
-    ]
-
-    issue_count = len(all_active_incidents)
-    responded_count = len(wip_incidents)
-    pending_count = len(pending_incidents)
-
-    engineers = get_engineers()
-    stats = get_stats_for_week()
-    recent_resolved = get_recent_resolved_incidents()
-
-    return render_template(
-        "index.html",
-        current_time_utc=get_current_time_str(),
-        last_refresh_time=last_refresh_time_g,
-        issue_count=issue_count,
-        responded_count=responded_count,
-        pending_count=pending_count,
-        engineers=engineers,
-        pending_incidents=pending_incidents,
-        wip_incidents=wip_incidents,
-        stats=stats,
-        recent_resolved=recent_resolved,
-        priorities=["P1", "P2", "P3", "P4"],
-        now_utc_timestamp=now_utc().timestamp(),  # For JS timer calculations
-    )
-
-
-@app.route("/get-last-refresh-time")
 def get_last_refresh_time():
-    """API endpoint to get the last refresh time from the database.
+    """Gets the last refresh time from the database.
 
     Returns:
-        dict: JSON response containing the last refresh time
+        str: Formatted last refresh time in Sydney timezone or "Never"
     """
     conn = get_db_connection()
     try:
+        # Ensure the table exists
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_state (
+                key VARCHAR PRIMARY KEY,
+                value TIMESTAMPTZ
+            );
+        """)
+
         result = conn.execute(
             "SELECT value FROM app_state WHERE key = 'last_refresh_time'"
         ).fetchone()
+
         if result and result[0]:
-            # Format the timestamp for display
-            last_refresh = result[0].strftime("%Y-%m-%d %H:%M:%S %Z")
-            return jsonify({"last_refresh_time": last_refresh})
-        return jsonify({"last_refresh_time": "Never"})
+            # Convert to Sydney timezone for display
+            sydney_tz = pytz.timezone("Australia/Sydney")
+            last_refresh_utc = result[0]
+            last_refresh_sydney = last_refresh_utc.astimezone(sydney_tz)
+            return last_refresh_sydney.strftime("%H:%M:%S")
+        return "Never"
     except Exception as e:
         print(f"Error getting last refresh time: {e}")
-        return jsonify({"last_refresh_time": "Error"})
+        return "Error"
     finally:
         conn.close()
 
 
-@app.route("/refresh-data", methods=["POST"])
-def refresh_data():
-    """Manually triggers a data refresh and updates the last refresh time.
-
-    Returns:
-        Response: Redirect to the index page
-    """
-    global last_refresh_time_g
-    # This endpoint could potentially trigger the scheduler to run immediately
-    # For now, it just updates the 'last_refresh_time' for display
-    # The actual data refresh happens via the background scheduler
-    print("Manual refresh triggered by user.")
-    # You could force an immediate fetch here if desired:
-    # from scheduler import fetch_and_update_job_statuses # careful with imports
-    # fetch_and_update_job_statuses(app)
-    # But for simplicity, we assume scheduler is running.
-
-    # Update the last_refresh_time in the database
+def update_last_refresh_time():
+    """Updates the last refresh time in the database to current time."""
     current_time = now_utc()
     conn = get_db_connection()
     try:
@@ -388,8 +328,87 @@ def refresh_data():
     finally:
         conn.close()
 
-    last_refresh_time_g = get_current_time_str()
-    session["last_refresh_time"] = last_refresh_time_g
+
+# --- Routes ---
+@app.route("/")
+def index():
+    """Main dashboard page.
+
+    Returns:
+        str: Rendered HTML template with dashboard data
+    """
+    all_active_incidents = get_active_incidents()
+    pending_incidents = [
+        inc
+        for inc in all_active_incidents
+        if inc["responding_engineer_name"] is None
+    ]
+    wip_incidents = [
+        inc
+        for inc in all_active_incidents
+        if inc["responding_engineer_name"] is not None
+    ]
+
+    issue_count = len(all_active_incidents)
+    responded_count = len(wip_incidents)
+    pending_count = len(pending_incidents)
+
+    engineers = get_engineers()
+    stats = get_stats_for_week()
+    recent_resolved = get_recent_resolved_incidents()
+    last_refresh_time = get_last_refresh_time()
+
+    return render_template(
+        "index.html",
+        current_time_utc=get_current_time_str(),
+        last_refresh_time=last_refresh_time,
+        issue_count=issue_count,
+        responded_count=responded_count,
+        pending_count=pending_count,
+        engineers=engineers,
+        pending_incidents=pending_incidents,
+        wip_incidents=wip_incidents,
+        stats=stats,
+        recent_resolved=recent_resolved,
+        priorities=["P1", "P2", "P3", "P4"],
+        now_utc_timestamp=now_utc().timestamp(),  # For JS timer calculations
+    )
+
+
+@app.route("/get-last-refresh-time")
+def get_last_refresh_time_endpoint():
+    """API endpoint to get the last refresh time from the database."""
+    last_refresh = get_last_refresh_time()
+    return jsonify({"last_refresh_time": last_refresh})
+
+
+@app.route("/get-incident-count")
+def get_incident_count():
+    """API endpoint to get the current count of active incidents."""
+    conn = get_db_connection()
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM incidents WHERE resolved_at IS NULL"
+        ).fetchone()[0]
+        return jsonify({"count": count})
+    except Exception as e:
+        return jsonify({"count": 0, "error": str(e)})
+    finally:
+        conn.close()
+
+
+@app.route("/refresh-data", methods=["POST"])
+def refresh_data():
+    """Manually triggers a data refresh.
+
+    Returns:
+        Response: Redirect to the index page
+    """
+    # Trigger immediate refresh
+    fetch_and_update_job_statuses(app)
+    # Update the refresh time
+    update_last_refresh_time()
+
     return redirect(url_for("index"))
 
 
@@ -545,12 +564,61 @@ def resolve_incident(incident_id):
     return redirect(url_for("index"))
 
 
+@app.route("/get-api-error-state")
+def get_api_error_state():
+    """Returns the current API error state."""
+    return jsonify(
+        {
+            "has_error": api_error_state["has_error"],
+            "last_error": api_error_state["last_error"],
+            "last_error_time": api_error_state["last_error_time"].isoformat()
+            if api_error_state["last_error_time"]
+            else None,
+        }
+    )
+
+
+@app.route("/debug-status")
+def debug_status():
+    """Debug endpoint to check system status."""
+    try:
+        # Get last refresh time
+        last_refresh = get_last_refresh_time()
+
+        # Get incident counts
+        total_incidents = g.db.execute(
+            "SELECT COUNT(*) FROM incidents"
+        ).fetchone()[0]
+
+        active_incidents = g.db.execute(
+            "SELECT COUNT(*) FROM incidents WHERE resolved_at IS NULL"
+        ).fetchone()[0]
+
+        # Get last API update times
+        last_updates = g.db.execute(
+            "SELECT MAX(last_api_update) FROM incidents"
+        ).fetchone()[0]
+
+        return jsonify(
+            {
+                "last_refresh_time": last_refresh,
+                "total_incidents": total_incidents,
+                "active_incidents": active_incidents,
+                "last_incident_update": last_updates.isoformat()
+                if last_updates
+                else "Never",
+                "current_time": now_utc().isoformat(),
+                "api_error_state": api_error_state,
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # --- Scheduler Setup ---
 if __name__ == "__main__":
     init_db()  # Ensure DB is initialized
     # Start scheduler in a separate thread
-    # Pass the app context or necessary components if scheduler needs them directly
-    # For simplicity, scheduler.py will import app and use its context
     start_scheduler(app)
     try:
         app.run(

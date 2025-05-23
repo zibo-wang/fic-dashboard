@@ -17,6 +17,24 @@
             margin: 0;
         }
 
+        .api-error-banner {
+            display: none;
+            background-color: #f77669;
+            color: #1a1b26;
+            padding: 1rem;
+            text-align: center;
+            font-weight: bold;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+
+        .api-error-banner.show {
+            display: block;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -79,17 +97,64 @@
         .flash-red {
             animation: flash-red 2s infinite;
         }
+
+        @keyframes blink {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        #current-time {
+            font-family: 'Courier New', monospace;
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+            color: #ff9e64;
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: inline-block;
+            min-width: 140px;
+            text-align: center;
+        }
     </style>
 </head>
 
 <body class="bg-tn-bg text-tn-text min-h-screen flex flex-col lg:flex-row">
+    <!-- API Error Banner -->
+    <div id="apiErrorBanner" class="api-error-banner">
+        <span id="apiErrorText"></span>
+    </div>
+
     <!-- Sidebar -->
     <aside class="lg:w-64 w-full bg-tn-bg-alt p-4 flex flex-col">
         <div class="mb-6">
             <h2 class="text-xl font-bold text-tn-purple mb-2">SRE Dashboard</h2>
-            <div class="text-sm text-tn-comment">
-                <p>Current Time (UTC): <span id="current-time">{{ current_time_utc }}</span></p>
-                <p>Last Refresh: <span id="last-refresh-time">{{ last_refresh_time }}</span></p>
+            <div class="text-tn-text mb-4">
+                <div class="text-4xl font-bold text-center mb-2" id="current-time">{{ current_time_utc }}</div>
+                <div class="text-sm text-tn-comment flex items-center justify-center gap-4">
+                    Last Refresh: {{ last_refresh_time }}
+                    <form action="{{ url_for('refresh_data') }}" method="POST" class="inline">
+                        <button type="submit" class="text-tn-blue hover:text-tn-purple transition-colors"
+                            title="Refresh data">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M23 4v6h-6"></path>
+                                <path d="M1 20v-6h6"></path>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
 
@@ -110,11 +175,6 @@
                     <span class="font-bold text-tn-red">{{ pending_count }}</span>
                 </div>
             </div>
-            <form action="{{ url_for('refresh_data') }}" method="POST" class="mt-3">
-                <button type="submit"
-                    class="w-full bg-tn-blue hover:bg-tn-purple text-white py-1 px-3 rounded text-sm">Refresh
-                    Data</button>
-            </form>
         </div>
 
         <!-- On-Call Engineers -->
@@ -241,6 +301,7 @@
                                         {% if incident.status == 'CRITICAL' %} bg-tn-red text-black
                                         {% elif incident.status == 'ERROR' %} bg-tn-orange text-black
                                         {% elif incident.status == 'WARNING' %} bg-tn-yellow text-black
+                                        {% elif incident.status == 'API_ERROR' %} bg-tn-comment text-tn-text
                                         {% endif %}">
                                         {{ incident.status }}
                                     </span>
@@ -323,6 +384,7 @@
                                         {% if incident.status == 'CRITICAL' %} bg-tn-red text-black
                                         {% elif incident.status == 'ERROR' %} bg-tn-orange text-black
                                         {% elif incident.status == 'WARNING' %} bg-tn-yellow text-black
+                                        {% elif incident.status == 'API_ERROR' %} bg-tn-comment text-tn-text
                                         {% endif %}">
                                         {{ incident.status }}
                                     </span>

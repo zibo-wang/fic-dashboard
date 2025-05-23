@@ -92,7 +92,6 @@ def get_jobs():
             )
             MOCK_JOBS[job_id]["status"] = "OK"  # Mark as OK internally
             MOCK_JOBS[job_id]["last_change"] = time.time()
-            # continue # skip sending it this time
 
         current_jobs.append(
             {

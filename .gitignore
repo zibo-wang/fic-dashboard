@@ -71,3 +71,4 @@ htmlcov/
 
 # Tailwind output
 static/css/output.css
+.ropeproject

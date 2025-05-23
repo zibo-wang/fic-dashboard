@@ -19,10 +19,16 @@ document.addEventListener('DOMContentLoaded', function () {
      */
     function updateCurrentTime() {
         if (currentTimeElem) {
-            currentTimeElem.textContent = new Date().toLocaleString('en-US', {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+            const now = new Date();
+            const sydneyTime = new Date(now.toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+            const timeStr = sydneyTime.toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'Australia/Sydney'
             });
+            currentTimeElem.textContent = timeStr;
         }
     }
     updateCurrentTime();
@@ -49,15 +55,39 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // Update last refresh time initially and then every 10 seconds
+    // Update last refresh time initially and then every 5 seconds
     updateLastRefreshTime();
-    setInterval(updateLastRefreshTime, 10000);
+    setInterval(updateLastRefreshTime, 5000);
 
-    // Auto-refresh page (if desired, often better to use HTMX or fetch for partials)
-    // setTimeout(() => {
-    //     console.log("Auto-reloading page for fresh data...");
-    //     location.reload();
-    // }, 60000); // Refresh every 60 seconds - adjust as needed
+    // Check API error state
+    function checkApiErrorState() {
+        fetch('/get-api-error-state')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const errorBanner = document.getElementById('apiErrorBanner');
+                const errorText = document.getElementById('apiErrorText');
+                if (errorBanner && errorText) {
+                    if (data.has_error) {
+                        errorBanner.classList.add('show');
+                        errorText.textContent = `API Error: ${data.last_error}`;
+                    } else {
+                        errorBanner.classList.remove('show');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking API state:', error);
+            });
+    }
+
+    // Check API error state initially and then every 10 seconds
+    checkApiErrorState();
+    setInterval(checkApiErrorState, 5000);
 
     // --- Incident Durations & Flashing ---
     const incidentRows = document.querySelectorAll('tr[data-first-detected]');
@@ -101,7 +131,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const status = row.dataset.status;
             const isResponded = row.dataset.responded === 'true';
 
-            if (!isResponded && (status === 'CRITICAL' || status === 'ERROR') && durationSeconds > 60) {
+            // Don't flash for API_ERROR status
+            if (!isResponded && status !== 'API_ERROR' && (status === 'CRITICAL' || status === 'ERROR') && durationSeconds > 60) {
                 row.classList.add('flash-red');
             } else {
                 row.classList.remove('flash-red');
@@ -110,7 +141,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     updateDurationsAndFlash(); // Initial call
     setInterval(updateDurationsAndFlash, 1000); // Update every second
-
 
     // --- Charts ---
     const incidentsByDayCtx = document.getElementById('incidentsByDayChart');
@@ -273,13 +303,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // Close modals when clicking outside
     window.addEventListener('click', function (event) {
         if (event.target.classList.contains('modal')) {
-            if (!respondModal.classList.contains('hidden')) {
+            if (respondModal && !respondModal.classList.contains('hidden')) {
                 closeRespondModal();
             }
-            if (!incLinkModal.classList.contains('hidden')) {
+            if (incLinkModal && !incLinkModal.classList.contains('hidden')) {
                 closeIncLinkModal();
             }
-            if (!addEngineerModal.classList.contains('hidden')) {
+            if (addEngineerModal && !addEngineerModal.classList.contains('hidden')) {
                 closeAddEngineerModal();
             }
         }
@@ -288,17 +318,55 @@ document.addEventListener('DOMContentLoaded', function () {
     // Close modals on ESC key
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
-            if (!respondModal.classList.contains('hidden')) {
+            if (respondModal && !respondModal.classList.contains('hidden')) {
                 closeRespondModal();
             }
-            if (!incLinkModal.classList.contains('hidden')) {
+            if (incLinkModal && !incLinkModal.classList.contains('hidden')) {
                 closeIncLinkModal();
             }
-            if (!addEngineerModal.classList.contains('hidden')) {
+            if (addEngineerModal && !addEngineerModal.classList.contains('hidden')) {
                 closeAddEngineerModal();
             }
         }
     });
+
+    // Enhanced auto-refresh functionality
+    let lastIncidentCount = document.querySelectorAll('tr[data-first-detected]').length;
+    let lastRefreshTimeValue = lastRefreshTimeElem?.textContent || 'Never';
+
+    // Function to check if page needs refresh
+    function checkForUpdates() {
+        // Check both incident count and last refresh time
+        Promise.all([
+            fetch('/get-incident-count').then(r => r.json()),
+            fetch('/get-last-refresh-time').then(r => r.json())
+        ]).then(([countData, refreshData]) => {
+            const currentCount = countData.count || 0;
+            const currentRefreshTime = refreshData.last_refresh_time || 'Never';
+
+            // Check if either incident count or refresh time has changed
+            if (currentCount !== lastIncidentCount ||
+                (currentRefreshTime !== 'Never' && currentRefreshTime !== lastRefreshTimeValue)) {
+                console.log(`Updates detected - Count: ${lastIncidentCount} → ${currentCount}, Time: ${lastRefreshTimeValue} → ${currentRefreshTime}`);
+                location.reload();
+            }
+
+            // Update the stored values
+            lastIncidentCount = currentCount;
+            lastRefreshTimeValue = currentRefreshTime;
+        }).catch(error => {
+            console.error('Error checking for updates:', error);
+        });
+    }
+
+    // Check for updates every 5 seconds
+    setInterval(checkForUpdates, 30000);
+
+    // Force refresh every 2 minutes as a fallback
+    setInterval(() => {
+        console.log('Forcing periodic refresh');
+        location.reload();
+    }, 120000);
 });
 
 // Make weeklyStats globally available for Chart.js if it's rendered in a script tag in HTML

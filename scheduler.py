@@ -15,10 +15,11 @@ import logging
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
-from database import (  # Use the same now_utc for consistency
+
+from database import (
     get_db_connection,
     now_utc,
-)
+)  # Use the same now_utc for consistency
 
 # Configure basic logging for the scheduler
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +37,43 @@ CACHE_DURATION_SECONDS = (
     25  # Slightly less than fetch interval to ensure fresh data
 )
 
+# Track API error state
+api_error_state = {
+    "has_error": False,
+    "last_error": None,
+    "last_error_time": None,
+}
+
+
+def update_last_refresh_time_in_db():
+    """Updates the last refresh time in the database."""
+    current_time = now_utc()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_state (
+                key VARCHAR PRIMARY KEY,
+                value TIMESTAMPTZ
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO app_state (key, value) 
+            VALUES ('last_refresh_time', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """,
+            (current_time,),
+        )
+        conn.commit()
+        scheduler_logger.info(f"Updated last refresh time to {current_time}")
+    except Exception as e:
+        scheduler_logger.error(f"Error updating last refresh time: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
 
 def fetch_and_update_job_statuses(flask_app):
     """Fetches job statuses from the API and updates the database.
@@ -50,7 +88,7 @@ def fetch_and_update_job_statuses(flask_app):
     Args:
         flask_app: The Flask application instance, used for configuration and context
     """
-    global api_data_cache
+    global api_data_cache, api_error_state
     current_time = now_utc()
 
     # Check cache
@@ -65,50 +103,41 @@ def fetch_and_update_job_statuses(flask_app):
     else:
         api_jobs = None  # No cache
 
+    # If no cached data, fetch from API
     if not api_jobs:
-        scheduler_logger.info("Fetching fresh data from API.")
         try:
-            # Use httpx for async requests if you were calling multiple APIs
-            # For a single API, sync is fine for the scheduler's background thread
-            # For true async within this function, you'd need an event loop (e.g., asyncio.run)
-            with httpx.Client(timeout=10.0) as client:  # Added timeout
-                response = client.get(flask_app.config["MOCK_API_URL"])
-                response.raise_for_status()  # Raise an exception for HTTP errors
-                api_jobs = response.json()
-                api_data_cache["data"] = api_jobs
-                api_data_cache["last_fetched"] = current_time
+            # Fetch from API
+            api_url = flask_app.config.get("MOCK_API_URL")
+            if not api_url:
+                scheduler_logger.error("MOCK_API_URL not configured")
+                api_error_state["has_error"] = True
+                api_error_state["last_error"] = "API_URL not configured"
+                api_error_state["last_error_time"] = current_time
+                return
 
-                # Update last refresh time in the database
-                conn = get_db_connection()
-                try:
-                    conn.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS app_state (
-                            key VARCHAR PRIMARY KEY,
-                            value TIMESTAMPTZ
-                        );
-                        """
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO app_state (key, value) 
-                        VALUES ('last_refresh_time', ?)
-                        ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-                        """,
-                        (current_time,),
-                    )
-                    conn.commit()
-                except Exception as e:
-                    scheduler_logger.error(
-                        f"Error updating last refresh time: {e}"
-                    )
-                finally:
-                    conn.close()
+            with httpx.Client(timeout=10.0) as client:  # 10 second timeout
+                response = client.get(api_url)
+                response.raise_for_status()  # Raise exception for non-200 status codes
+                api_jobs = response.json()
+
+            # Update cache
+            api_data_cache["data"] = api_jobs
+            api_data_cache["last_fetched"] = current_time
+            # Clear error state on successful fetch
+            api_error_state["has_error"] = False
+            api_error_state["last_error"] = None
+
         except httpx.RequestError as e:
-            scheduler_logger.error(f"Error fetching job statuses from API: {e}")
+            scheduler_logger.error(f"Failed to fetch from API: {e}")
+            api_error_state["has_error"] = True
+            api_error_state["last_error"] = str(e)
+            api_error_state["last_error_time"] = current_time
             return
         except Exception as e:
             scheduler_logger.error(f"Unexpected error during API fetch: {e}")
+            api_error_state["has_error"] = True
+            api_error_state["last_error"] = str(e)
+            api_error_state["last_error_time"] = current_time
             return
 
     if not api_jobs:
@@ -268,6 +297,10 @@ def fetch_and_update_job_statuses(flask_app):
                         )
 
             conn.commit()
+
+            # Update the last refresh time after successful processing
+            update_last_refresh_time_in_db()
+
             scheduler_logger.info("Job status update complete.")
 
         except Exception as e:
