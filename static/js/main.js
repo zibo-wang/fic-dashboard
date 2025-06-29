@@ -369,6 +369,76 @@ document.addEventListener('DOMContentLoaded', function () {
         addEngineerForm.reset();
     }
 
+    // Add Incident Modal
+    const addIncidentModal = document.getElementById('addIncidentModal');
+    const addIncidentForm = document.querySelector('#addIncidentModal form');
+
+    /**
+     * Opens the add incident modal.
+     */
+    window.openAddIncidentModal = function () {
+        if (!addIncidentModal || !addIncidentForm) {
+            console.error('Add Incident modal elements not found');
+            return;
+        }
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
+        addIncidentModal.classList.remove('hidden');
+    }
+
+    /**
+     * Closes the add incident modal and resets its form.
+     */
+    window.closeAddIncidentModal = function () {
+        if (!addIncidentModal || !addIncidentForm) {
+            console.error('Add Incident modal elements not found');
+            return;
+        }
+        addIncidentModal.classList.add('hidden');
+        addIncidentForm.reset();
+    }
+
+    // Resolve Modal
+    const resolveModal = document.getElementById('resolveModal');
+    const resolveModalForm = document.getElementById('resolveModalForm');
+    const resolveModalIncidentId = document.getElementById('resolveModalIncidentId');
+    const resolveModalJobName = document.getElementById('resolveModalJobName');
+    const resolveModalNotes = document.getElementById('resolveModalNotes');
+
+    /**
+     * Opens the resolve modal for a specific incident.
+     *
+     * @param {number} incidentId - The ID of the incident
+     * @param {string} jobName - The name of the job
+     */
+    window.openResolveModal = function (incidentId, jobName) {
+        if (!resolveModal || !resolveModalForm || !resolveModalIncidentId || !resolveModalJobName || !resolveModalNotes) {
+            console.error('Resolve modal elements not found');
+            return;
+        }
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
+        resolveModalIncidentId.value = incidentId;
+        resolveModalJobName.textContent = jobName;
+        resolveModalForm.action = `/resolve-incident/${incidentId}`;
+        resolveModalNotes.value = ''; // Clear previous notes
+        resolveModal.classList.remove('hidden');
+        // Focus on the textarea
+        setTimeout(() => resolveModalNotes.focus(), 100);
+    }
+
+    /**
+     * Closes the resolve modal and resets its form.
+     */
+    window.closeResolveModal = function () {
+        if (!resolveModal || !resolveModalForm) {
+            console.error('Resolve modal elements not found');
+            return;
+        }
+        resolveModal.classList.add('hidden');
+        resolveModalForm.reset();
+    }
+
     // Close modals when clicking outside
     window.addEventListener('click', function (event) {
         if (event.target.classList.contains('modal')) {
@@ -380,6 +450,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (addEngineerModal && !addEngineerModal.classList.contains('hidden')) {
                 closeAddEngineerModal();
+            }
+            if (addIncidentModal && !addIncidentModal.classList.contains('hidden')) {
+                closeAddIncidentModal();
+            }
+            if (resolveModal && !resolveModal.classList.contains('hidden')) {
+                closeResolveModal();
             }
         }
     });
@@ -395,6 +471,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (addEngineerModal && !addEngineerModal.classList.contains('hidden')) {
                 closeAddEngineerModal();
+            }
+            if (addIncidentModal && !addIncidentModal.classList.contains('hidden')) {
+                closeAddIncidentModal();
+            }
+            if (resolveModal && !resolveModal.classList.contains('hidden')) {
+                closeResolveModal();
             }
         }
     });

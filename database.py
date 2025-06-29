@@ -56,9 +56,17 @@ def init_db():
         inc_number VARCHAR,
         inc_link VARCHAR,
         notes TEXT,                     -- For any additional notes
+        resolve_notes TEXT,             -- Notes about how the incident was resolved
         last_api_update TIMESTAMPTZ     -- When the API last reported this status
     );
     """)
+
+    # Add resolve_notes column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE incidents ADD COLUMN resolve_notes TEXT;")
+    except Exception:
+        # Column already exists or other error, ignore
+        pass
 
     # Engineers table
     cursor.execute("""

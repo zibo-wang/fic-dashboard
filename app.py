@@ -301,7 +301,7 @@ def get_recent_resolved_incidents():
     today = now_utc().date()
     start_of_week = today - datetime.timedelta(days=today.weekday())
     query = f"""
-    SELECT i.job_name, i.status, i.priority, i.first_detected_at, i.responded_at, i.resolved_at, e.name as responding_engineer_name, i.inc_number
+    SELECT i.job_name, i.status, i.priority, i.first_detected_at, i.responded_at, i.resolved_at, e.name as responding_engineer_name, i.inc_number, i.resolve_notes
     FROM incidents i
     LEFT JOIN engineers e ON i.responding_engineer_id = e.id
     WHERE i.resolved_at IS NOT NULL AND i.resolved_at >= '{start_of_week}'
@@ -320,6 +320,7 @@ def get_recent_resolved_incidents():
             "resolved_at": row[5],
             "responding_engineer_name": row[6],
             "inc_number": row[7],
+            "resolve_notes": row[8],
         }
         for row in results
     ]
@@ -543,6 +544,49 @@ def refresh_data():
     return redirect(url_for("index"))
 
 
+@app.route("/add-incident", methods=["POST"])
+@login_required
+def add_incident():
+    """Adds a new incident to the database.
+
+    Returns:
+        Response: Redirect to the index page
+    """
+    job_name = request.form.get("job_name")
+    status = request.form.get("status")
+    priority = request.form.get("priority")
+    log_url = request.form.get("log_url", None)  # Optional
+    notes = request.form.get("notes", None)  # Optional
+
+    if job_name and status and priority:
+        try:
+            current_time = now_utc()
+            g.db.execute(
+                """
+                INSERT INTO incidents (
+                    job_name, status, priority, log_url, notes,
+                    first_detected_at, last_api_update
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job_name,
+                    status,
+                    priority,
+                    log_url,
+                    notes,
+                    current_time,
+                    current_time,
+                ),
+            )
+            g.db.commit()
+            flash(f"Incident '{job_name}' added successfully.", "success")
+        except Exception as e:
+            flash(f"Error adding incident: {e}", "error")
+    else:
+        flash("Job name, status, and priority are required.", "error")
+    return redirect(url_for("index"))
+
+
 @app.route("/add-engineer", methods=["POST"])
 @login_required
 def add_engineer():
@@ -685,7 +729,7 @@ def update_inc_link(incident_id):
 @app.route("/resolve-incident/<int:incident_id>", methods=["POST"])
 @login_required
 def resolve_incident(incident_id):
-    """Marks an incident as resolved.
+    """Marks an incident as resolved with resolution notes.
 
     Args:
         incident_id (int): ID of the incident to resolve
@@ -693,12 +737,18 @@ def resolve_incident(incident_id):
     Returns:
         Response: Redirect to the index page
     """
+    resolve_notes = request.form.get("resolve_notes")
+
+    if not resolve_notes or not resolve_notes.strip():
+        flash("Resolution notes are required to resolve an incident.", "error")
+        return redirect(url_for("index"))
+
     # This is a manual resolve button.
     # If an incident is not picked up by the API as "OK" or gone,
     # SREs can manually resolve it.
     g.db.execute(
-        "UPDATE incidents SET resolved_at = ? WHERE id = ?",
-        (now_utc(), incident_id),
+        "UPDATE incidents SET resolved_at = ?, resolve_notes = ? WHERE id = ?",
+        (now_utc(), resolve_notes.strip(), incident_id),
     )
     g.db.commit()
     flash("Incident resolved successfully.", "success")

@@ -304,8 +304,14 @@
         <section id="incident-tables" class="space-y-6">
             <!-- Pending Response -->
             <div>
-                <h2 class="text-lg lg:text-xl font-semibold text-tn-red mb-3">Pending Response
-                    ({{ pending_incidents|length }})</h2>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg lg:text-xl font-semibold text-tn-red">Pending Response
+                        ({{ pending_incidents|length }})</h2>
+                    <button onclick="openAddIncidentModal()"
+                        class="bg-tn-green hover:bg-tn-blue text-white py-1 px-3 rounded text-sm">
+                        Add
+                    </button>
+                </div>
                 {% if pending_incidents %}
                 <div class="overflow-x-auto bg-tn-bg-alt rounded-lg shadow">
                     <table class="min-w-full table-fixed-layout">
@@ -468,12 +474,8 @@
                                     {% endif %}
                                 </td>
                                 <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
-                                    <form action="{{ url_for('resolve_incident', incident_id=incident.id) }}"
-                                        method="POST" class="inline"
-                                        onsubmit="return confirm('Manually resolve {{incident.job_name}}?');">
-                                        <button type="submit"
-                                            class="bg-tn-yellow hover:bg-tn-orange text-black py-1 px-2 rounded text-xs">Resolve</button>
-                                    </form>
+                                    <button onclick="openResolveModal({{ incident.id }}, '{{ incident.job_name }}')"
+                                        class="bg-tn-yellow hover:bg-tn-orange text-black py-1 px-2 rounded text-xs">Resolve</button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -515,6 +517,9 @@
                             <th
                                 class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
                                 INC #</th>
+                            <th
+                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
+                                Resolution Notes</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-tn-comment">
@@ -545,6 +550,15 @@
                                 </a>
                                 {% elif incident.inc_number %}
                                 {{ incident.inc_number }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td class="p-2 lg:p-3 text-sm max-w-xs">
+                                {% if incident.resolve_notes %}
+                                <div class="truncate" title="{{ incident.resolve_notes }}">
+                                    {{ incident.resolve_notes }}
+                                </div>
                                 {% else %}
                                 -
                                 {% endif %}
@@ -665,6 +679,86 @@
                     <button type="submit"
                         class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Add
                         Engineer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Incident Modal -->
+    <div id="addIncidentModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeAddIncidentModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Add New Incident</h3>
+            <form action="{{ url_for('add_incident') }}" method="POST" class="space-y-4">
+                <div>
+                    <label for="addIncidentJobName" class="block text-sm font-medium text-tn-text">Job Name:</label>
+                    <input type="text" id="addIncidentJobName" name="job_name" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div>
+                    <label for="addIncidentStatus" class="block text-sm font-medium text-tn-text">Status:</label>
+                    <select id="addIncidentStatus" name="status" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                        <option value="CRITICAL">CRITICAL</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="WARNING">WARNING</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="addIncidentPriority" class="block text-sm font-medium text-tn-text">Priority:</label>
+                    <select id="addIncidentPriority" name="priority" required
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                        {% for p in priorities %}
+                        <option value="{{ p }}" {% if p == 'P3' %}selected{% endif %}>{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="addIncidentLogUrl" class="block text-sm font-medium text-tn-text">Log URL
+                        (Optional):</label>
+                    <input type="url" id="addIncidentLogUrl" name="log_url"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm">
+                </div>
+                <div>
+                    <label for="addIncidentNotes" class="block text-sm font-medium text-tn-text">Notes
+                        (Optional):</label>
+                    <textarea id="addIncidentNotes" name="notes" rows="3"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm"></textarea>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeAddIncidentModal()"
+                        class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Cancel</button>
+                    <button type="submit"
+                        class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-blue hover:bg-tn-purple focus:outline-none">Add
+                        Incident</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Resolve Modal -->
+    <div id="resolveModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeResolveModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Resolve Incident: <span id="resolveModalJobName"></span>
+            </h3>
+            <form id="resolveModalForm" method="POST">
+                <input type="hidden" name="incident_id" id="resolveModalIncidentId">
+                <div class="mb-4">
+                    <label for="resolveModalNotes" class="block text-sm font-medium text-tn-text">Resolution
+                        Notes:</label>
+                    <textarea id="resolveModalNotes" name="resolve_notes" rows="4" required
+                        placeholder="Please describe how this incident was resolved..."
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm"></textarea>
+                    <p class="mt-1 text-xs text-tn-comment">This information will help with future incident analysis and
+                        prevention.</p>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeResolveModal()"
+                        class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Cancel</button>
+                    <button type="submit"
+                        class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-tn-yellow hover:bg-tn-orange focus:outline-none">Resolve
+                        Incident</button>
                 </div>
             </form>
         </div>
