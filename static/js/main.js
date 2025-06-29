@@ -59,6 +59,75 @@ document.addEventListener('DOMContentLoaded', function () {
     updateLastRefreshTime();
     setInterval(updateLastRefreshTime, 5000);
 
+    /**
+     * Updates the dashboard statistics without requiring a full page reload.
+     */
+    function updateDashboardStats() {
+        fetch('/get-stats')
+            .then(response => {
+                if (response.status === 302) {
+                    // Session expired, redirect to login
+                    console.log('Session expired, redirecting to login');
+                    window.location.href = '/login';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data) {
+                    console.log('No data received from stats endpoint');
+                    return;
+                }
+
+
+                // Update sidebar counts
+                const issueCountElements = document.querySelectorAll('[data-stat="issue-count"]');
+                const respondedCountElements = document.querySelectorAll('[data-stat="responded-count"]');
+                const pendingCountElements = document.querySelectorAll('[data-stat="pending-count"]');
+
+                issueCountElements.forEach(el => el.textContent = data.issue_count);
+                respondedCountElements.forEach(el => el.textContent = data.responded_count);
+                pendingCountElements.forEach(el => el.textContent = data.pending_count);
+
+                // Update main dashboard stats
+                const totalThisWeekEl = document.querySelector('[data-stat="total-this-week"]');
+                const resolvedThisWeekEl = document.querySelector('[data-stat="resolved-this-week"]');
+                const avgRespondTimeEl = document.querySelector('[data-stat="avg-respond-time"]');
+                const avgResolveTimeEl = document.querySelector('[data-stat="avg-resolve-time"]');
+
+                if (totalThisWeekEl) {
+                    totalThisWeekEl.textContent = data.stats.total_this_week;
+                }
+                if (resolvedThisWeekEl) {
+                    resolvedThisWeekEl.textContent = data.stats.resolved_this_week;
+                }
+                if (avgRespondTimeEl) {
+                    const respondMinutes = data.stats.avg_respond_time_seconds ? (data.stats.avg_respond_time_seconds / 60).toFixed(2) : '0.00';
+                    avgRespondTimeEl.textContent = respondMinutes;
+                }
+                if (avgResolveTimeEl) {
+                    const resolveHours = data.stats.avg_resolve_time_seconds ? (data.stats.avg_resolve_time_seconds / 3600).toFixed(2) : '0.00';
+                    avgResolveTimeEl.textContent = resolveHours;
+                }
+
+                // Update chart data if chart exists
+                if (window.incidentsByDayChart && data.stats.daily_counts_data) {
+                    window.incidentsByDayChart.data.datasets[0].data = data.stats.daily_counts_data;
+                    window.incidentsByDayChart.update('none'); // Update without animation for better performance
+                }
+            })
+            .catch(error => {
+                console.error('Error updating dashboard stats:', error);
+            });
+    }
+
+    // Update stats initially and then every 30 seconds
+    updateDashboardStats();
+    setInterval(updateDashboardStats, 30000);
+
     // Check API error state
     function checkApiErrorState() {
         fetch('/get-api-error-state')
@@ -145,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- Charts ---
     const incidentsByDayCtx = document.getElementById('incidentsByDayChart');
     if (incidentsByDayCtx && typeof weeklyStats !== 'undefined') { // weeklyStats should be passed from template
-        new Chart(incidentsByDayCtx, {
+        window.incidentsByDayChart = new Chart(incidentsByDayCtx, {
             type: 'bar',
             data: {
                 labels: weeklyStats.daily_counts_labels, // e.g., ['Mon', 'Tue', ...]

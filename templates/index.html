@@ -204,15 +204,15 @@
             <div class="space-y-2 text-sm">
                 <div class="flex justify-between items-center">
                     <span>Active Issues:</span>
-                    <span class="font-bold">{{ issue_count }}</span>
+                    <span class="font-bold" data-stat="issue-count">{{ issue_count }}</span>
                 </div>
                 <div class="flex justify-between items-center">
                     <span>Responded:</span>
-                    <span class="font-bold text-tn-green">{{ responded_count }}</span>
+                    <span class="font-bold text-tn-green" data-stat="responded-count">{{ responded_count }}</span>
                 </div>
                 <div class="flex justify-between items-center">
                     <span>Pending:</span>
-                    <span class="font-bold text-tn-red">{{ pending_count }}</span>
+                    <span class="font-bold text-tn-red" data-stat="pending-count">{{ pending_count }}</span>
                 </div>
             </div>
         </div>
@@ -271,22 +271,24 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
                     <h3 class="text-tn-cyan">Incidents This Week</h3>
-                    <p class="text-2xl lg:text-3xl font-bold">{{ stats.total_this_week }}</p>
+                    <p class="text-2xl lg:text-3xl font-bold" data-stat="total-this-week">{{ stats.total_this_week }}
+                    </p>
                 </div>
                 <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
                     <h3 class="text-tn-green">Resolved This Week</h3>
-                    <p class="text-2xl lg:text-3xl font-bold">{{ stats.resolved_this_week }}</p>
+                    <p class="text-2xl lg:text-3xl font-bold" data-stat="resolved-this-week">
+                        {{ stats.resolved_this_week }}</p>
                 </div>
                 <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
                     <h3 class="text-tn-orange">Avg. Respond Time</h3>
                     <p class="text-2xl lg:text-3xl font-bold"><span
-                            id="avg-respond-time">{{ "%.2f" | format(stats.avg_respond_time_seconds / 60 if stats.avg_respond_time_seconds else 0) }}</span>
+                            data-stat="avg-respond-time">{{ "%.2f" | format(stats.avg_respond_time_seconds / 60 if stats.avg_respond_time_seconds else 0) }}</span>
                         min</p>
                 </div>
                 <div class="bg-tn-bg-alt p-4 rounded-lg shadow">
                     <h3 class="text-tn-yellow">Avg. Resolve Time</h3>
                     <p class="text-2xl lg:text-3xl font-bold"><span
-                            id="avg-resolve-time">{{ "%.2f" | format(stats.avg_resolve_time_seconds / 3600 if stats.avg_resolve_time_seconds else 0) }}</span>
+                            data-stat="avg-resolve-time">{{ "%.2f" | format(stats.avg_resolve_time_seconds / 3600 if stats.avg_resolve_time_seconds else 0) }}</span>
                         hr</p>
                 </div>
             </div>
@@ -497,9 +499,6 @@
                                 Job Name</th>
                             <th
                                 class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
-                                Status</th>
-                            <th
-                                class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
                                 Priority</th>
                             <th
                                 class="p-2 lg:p-3 text-left text-xs font-medium text-tn-comment uppercase tracking-wider">
@@ -522,7 +521,6 @@
                         {% for incident in recent_resolved %}
                         <tr>
                             <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.job_name }}</td>
-                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.status }}</td>
                             <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.priority or '-' }}</td>
                             <td class="p-2 lg:p-3 whitespace-nowrap text-sm"
                                 title="{{ incident.first_detected_at.strftime('%Y-%m-%d %H:%M:%S %Z') if incident.first_detected_at else '' }}">
@@ -538,7 +536,19 @@
                             </td>
                             <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
                                 {{ incident.responding_engineer_name or '-' }}</td>
-                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">{{ incident.inc_number or '-' }}</td>
+                            <td class="p-2 lg:p-3 whitespace-nowrap text-sm">
+                                {% if incident.inc_number and incident.inc_link %}
+                                <a href="{{ incident.inc_link }}" target="_blank" rel="noopener noreferrer"
+                                    class="text-tn-blue hover:text-tn-cyan underline transition-colors duration-200"
+                                    title="Open incident {{ incident.inc_number }} in new tab">
+                                    {{ incident.inc_number }}
+                                </a>
+                                {% elif incident.inc_number %}
+                                {{ incident.inc_number }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

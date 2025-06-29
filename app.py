@@ -225,7 +225,7 @@ def get_stats_for_week():
     incidents_by_day_q = f"""
     SELECT strftime(first_detected_at, '%Y-%m-%d') as day, COUNT(*) as count
     FROM incidents
-    WHERE date_trunc('day', first_detected_at) >= '{start_of_week}' AND date_trunc('day', first_detected_at) <= '{end_of_week}'
+    WHERE DATE(first_detected_at) >= '{start_of_week}' AND DATE(first_detected_at) <= '{end_of_week}'
     GROUP BY day ORDER BY day;
     """
     incidents_by_day_raw = conn.execute(incidents_by_day_q).fetchall()
@@ -248,11 +248,11 @@ def get_stats_for_week():
         chart_data.append(daily_counts.get(day_date.strftime("%Y-%m-%d"), 0))
 
     total_this_week = conn.execute(
-        f"SELECT COUNT(*) FROM incidents WHERE first_detected_at >= '{start_of_week}' AND first_detected_at <= '{end_of_week}'"
+        f"SELECT COUNT(*) FROM incidents WHERE DATE(first_detected_at) >= '{start_of_week}' AND DATE(first_detected_at) <= '{end_of_week}'"
     ).fetchone()[0]
 
     resolved_this_week = conn.execute(
-        f"SELECT COUNT(*) FROM incidents WHERE resolved_at >= '{start_of_week}' AND resolved_at <= '{end_of_week}'"
+        f"SELECT COUNT(*) FROM incidents WHERE DATE(resolved_at) >= '{start_of_week}' AND DATE(resolved_at) <= '{end_of_week}'"
     ).fetchone()[0]
 
     # Average times (only for incidents that HAVE been responded/resolved)
@@ -260,7 +260,7 @@ def get_stats_for_week():
     SELECT AVG(EXTRACT(EPOCH FROM (responded_at - first_detected_at)))
     FROM incidents
     WHERE responded_at IS NOT NULL AND first_detected_at IS NOT NULL
-      AND first_detected_at >= '{start_of_week}' AND first_detected_at <= '{end_of_week}';
+      AND DATE(first_detected_at) >= '{start_of_week}' AND DATE(first_detected_at) <= '{end_of_week}';
     """
     avg_respond_time_seconds = conn.execute(
         avg_respond_time_seconds_q
@@ -270,7 +270,7 @@ def get_stats_for_week():
     SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - responded_at)))
     FROM incidents
     WHERE resolved_at IS NOT NULL AND responded_at IS NOT NULL
-      AND first_detected_at >= '{start_of_week}' AND first_detected_at <= '{end_of_week}';
+      AND DATE(first_detected_at) >= '{start_of_week}' AND DATE(first_detected_at) <= '{end_of_week}';
     """
     avg_resolve_time_seconds = conn.execute(
         avg_resolve_time_seconds_q
@@ -488,6 +488,43 @@ def get_incident_count():
         return jsonify({"count": 0, "error": str(e)})
     finally:
         conn.close()
+
+
+@app.route("/get-stats")
+@login_required
+def get_stats():
+    """API endpoint to get updated dashboard statistics."""
+    try:
+        # Get current incident counts
+        all_active_incidents = get_active_incidents()
+        pending_incidents = [
+            inc
+            for inc in all_active_incidents
+            if inc["responding_engineer_name"] is None
+        ]
+        wip_incidents = [
+            inc
+            for inc in all_active_incidents
+            if inc["responding_engineer_name"] is not None
+        ]
+
+        issue_count = len(all_active_incidents)
+        responded_count = len(wip_incidents)
+        pending_count = len(pending_incidents)
+
+        # Get weekly stats
+        stats = get_stats_for_week()
+
+        return jsonify(
+            {
+                "issue_count": issue_count,
+                "responded_count": responded_count,
+                "pending_count": pending_count,
+                "stats": stats,
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/refresh-data", methods=["POST"])
