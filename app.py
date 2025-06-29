@@ -12,13 +12,21 @@ The application uses DuckDB for data storage and APScheduler for background task
 
 import datetime
 import os
+from functools import wraps
 
 import duckdb
 import pytz
-from database import get_db_connection, init_db, now_utc
+from database import (
+    authenticate_user,
+    get_db_connection,
+    get_user_by_id,
+    init_db,
+    now_utc,
+)
 from dotenv import load_dotenv
 from flask import (
     Flask,
+    flash,
     g,
     jsonify,
     redirect,
@@ -29,9 +37,9 @@ from flask import (
 )
 from scheduler import (
     api_error_state,
+    fetch_and_update_job_statuses,
     start_scheduler,
     stop_scheduler,
-    fetch_and_update_job_statuses,
 )
 
 load_dotenv()  # For MOCK_API_URL
@@ -44,6 +52,49 @@ MOCK_API_URL = os.getenv(
 app = Flask(__name__)
 app.secret_key = APP_SECRET_KEY
 app.config["MOCK_API_URL"] = MOCK_API_URL
+app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(
+    hours=8
+)  # 8-hour session timeout
+
+
+def login_required(f):
+    """Decorator to require login for protected routes."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+
+        # Check if session is still valid
+        user = get_user_by_id(session["user_id"])
+        if not user:
+            session.clear()
+            flash("Session expired. Please log in again.", "warning")
+            return redirect(url_for("login"))
+
+        # Update user info in g for use in templates
+        g.current_user = user
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def check_session_timeout():
+    """Check if session has timed out."""
+    if "user_id" in session:
+        # Check if session is permanent and if it has expired
+        if not session.permanent:
+            session.permanent = True
+
+        # Verify user still exists and is active
+        user = get_user_by_id(session["user_id"])
+        if not user:
+            session.clear()
+            return False
+
+        g.current_user = user
+        return True
+    return False
 
 
 def get_current_time_str():
@@ -58,8 +109,15 @@ def get_current_time_str():
 
 @app.before_request
 def before_request():
-    """Sets up database connection before each request."""
+    """Sets up database connection and checks session before each request."""
     g.db = get_db_connection()
+
+    # Skip session check for login/logout routes and static files
+    if request.endpoint in ["login", "logout", "static"]:
+        return
+
+    # Check session timeout for all other routes
+    check_session_timeout()
 
 
 @app.teardown_request
@@ -330,7 +388,39 @@ def update_last_refresh_time():
 
 
 # --- Routes ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Login page and authentication."""
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        if username and password:
+            user = authenticate_user(username, password)
+            if user:
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session.permanent = True
+                flash(f"Welcome, {user['full_name']}!", "success")
+                return redirect(url_for("index"))
+            else:
+                flash("Invalid username or password.", "error")
+        else:
+            flash("Please enter both username and password.", "error")
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    """Logout and clear session."""
+    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
     """Main dashboard page.
 
@@ -372,10 +462,12 @@ def index():
         recent_resolved=recent_resolved,
         priorities=["P1", "P2", "P3", "P4"],
         now_utc_timestamp=now_utc().timestamp(),  # For JS timer calculations
+        current_user=g.current_user,
     )
 
 
 @app.route("/get-last-refresh-time")
+@login_required
 def get_last_refresh_time_endpoint():
     """API endpoint to get the last refresh time from the database."""
     last_refresh = get_last_refresh_time()
@@ -383,6 +475,7 @@ def get_last_refresh_time_endpoint():
 
 
 @app.route("/get-incident-count")
+@login_required
 def get_incident_count():
     """API endpoint to get the current count of active incidents."""
     conn = get_db_connection()
@@ -398,6 +491,7 @@ def get_incident_count():
 
 
 @app.route("/refresh-data", methods=["POST"])
+@login_required
 def refresh_data():
     """Manually triggers a data refresh.
 
@@ -413,6 +507,7 @@ def refresh_data():
 
 
 @app.route("/add-engineer", methods=["POST"])
+@login_required
 def add_engineer():
     """Adds a new engineer to the database.
 
@@ -428,16 +523,16 @@ def add_engineer():
                 (name, level),
             )
             g.db.commit()
+            flash(f"Engineer {name} added successfully.", "success")
         except duckdb.IntegrityError:  # Handles unique constraint for name
-            print(
-                f"Engineer {name} already exists."
-            )  # Add flash message for user
+            flash(f"Engineer {name} already exists.", "error")
         except Exception as e:
-            print(f"Error adding engineer: {e}")
+            flash(f"Error adding engineer: {e}", "error")
     return redirect(url_for("index"))
 
 
 @app.route("/delete-engineer/<int:engineer_id>", methods=["POST"])
+@login_required
 def delete_engineer(engineer_id):
     """Deletes an engineer from the database.
 
@@ -455,10 +550,12 @@ def delete_engineer(engineer_id):
     )
     g.db.execute("DELETE FROM engineers WHERE id = ?", (engineer_id,))
     g.db.commit()
+    flash("Engineer deleted successfully.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/respond-incident/<int:incident_id>", methods=["POST"])
+@login_required
 def respond_incident(incident_id):
     """Updates an incident with response information.
 
@@ -490,10 +587,12 @@ def respond_incident(incident_id):
             ),
         )
         g.db.commit()
+        flash("Incident response recorded successfully.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/update-incident-priority/<int:incident_id>", methods=["POST"])
+@login_required
 def update_incident_priority(incident_id):
     """Updates the priority of an incident.
 
@@ -510,10 +609,12 @@ def update_incident_priority(incident_id):
             (priority, incident_id),
         )
         g.db.commit()
+        flash("Incident priority updated successfully.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/update-inc-link/<int:incident_id>", methods=["POST"])
+@login_required
 def update_inc_link(incident_id):
     """Updates the incident number and/or link for an incident.
 
@@ -540,10 +641,12 @@ def update_inc_link(incident_id):
             query = f"UPDATE incidents SET {', '.join(updates)} WHERE id = ?"
             g.db.execute(query, tuple(params))
             g.db.commit()
+            flash("Incident link updated successfully.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/resolve-incident/<int:incident_id>", methods=["POST"])
+@login_required
 def resolve_incident(incident_id):
     """Marks an incident as resolved.
 
@@ -561,10 +664,12 @@ def resolve_incident(incident_id):
         (now_utc(), incident_id),
     )
     g.db.commit()
+    flash("Incident resolved successfully.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/get-api-error-state")
+@login_required
 def get_api_error_state():
     """Returns the current API error state."""
     return jsonify(
@@ -579,6 +684,7 @@ def get_api_error_state():
 
 
 @app.route("/debug-status")
+@login_required
 def debug_status():
     """Debug endpoint to check system status."""
     try:

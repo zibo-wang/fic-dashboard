@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRE Dashboard</title>
+    <title>FIC Dashboard</title>
     <link href="{{ url_for('static', filename='css/output.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -134,10 +134,50 @@
         <span id="apiErrorText"></span>
     </div>
 
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+        {% for category, message in messages %}
+        <div class="flash-message p-4 rounded-md shadow-lg max-w-sm {% if category == 'error' %}bg-tn-red text-tn-bg{% elif category == 'success' %}bg-tn-green text-tn-bg{% elif category == 'warning' %}bg-tn-orange text-tn-bg{% else %}bg-tn-blue text-tn-bg{% endif %}"
+            onclick="this.style.display='none'">
+            <div class="flex justify-between items-center">
+                <span>{{ message }}</span>
+                <button class="ml-2 text-lg font-bold">&times;</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <script>
+        // Auto-hide flash messages after 5 seconds
+        setTimeout(function () {
+            const flashMessages = document.querySelectorAll('.flash-message');
+            flashMessages.forEach(function (msg) {
+                msg.style.display = 'none';
+            });
+        }, 5000);
+    </script>
+    {% endif %}
+    {% endwith %}
+
     <!-- Sidebar -->
     <aside class="lg:w-64 w-full bg-tn-bg-alt p-4 flex flex-col">
         <div class="mb-6">
-            <h2 class="text-xl font-bold text-tn-purple mb-2">SRE Dashboard</h2>
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-bold text-tn-purple">FIC Dashboard</h2>
+                <a href="{{ url_for('logout') }}" class="text-xs text-tn-comment hover:text-tn-red transition-colors"
+                    title="Logout">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16,17 21,12 16,7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </a>
+            </div>
+            {% if g.current_user %}
+            <p class="text-xs text-tn-comment mb-2">Welcome, {{ g.current_user.full_name }}</p>
+            {% endif %}
             <div class="text-tn-text mb-4">
                 <div class="text-4xl font-bold text-center mb-2" id="current-time">{{ current_time_utc }}</div>
                 <div class="text-sm text-tn-comment flex items-center justify-center gap-4">
