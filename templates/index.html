@@ -556,8 +556,13 @@
                             </td>
                             <td class="p-2 lg:p-3 text-sm max-w-xs">
                                 {% if incident.resolve_notes %}
-                                <div class="truncate" title="{{ incident.resolve_notes }}">
-                                    {{ incident.resolve_notes }}
+                                <div class="cursor-pointer"
+                                    onclick="openResolveNotesModal('{{ incident.job_name }}', `{{ incident.resolve_notes|replace('`', '\\`')|replace('\n', '\\n') }}`)">
+                                    <div class="truncate text-tn-blue hover:text-tn-cyan">
+                                        {% set first_line = incident.resolve_notes.split('\n')[0] %}
+                                        {{ first_line[:50] + '...' if first_line|length > 50 else first_line }}
+                                    </div>
+                                    <div class="text-xs text-tn-comment">Click to view full details</div>
                                 </div>
                                 {% else %}
                                 -
@@ -745,13 +750,26 @@
             <form id="resolveModalForm" method="POST">
                 <input type="hidden" name="incident_id" id="resolveModalIncidentId">
                 <div class="mb-4">
-                    <label for="resolveModalNotes" class="block text-sm font-medium text-tn-text">Resolution
-                        Notes:</label>
-                    <textarea id="resolveModalNotes" name="resolve_notes" rows="4" required
-                        placeholder="Please describe how this incident was resolved..."
+                    <label for="resolveModalReason" class="block text-sm font-medium text-tn-text">Root
+                        Cause/Reason:</label>
+                    <textarea id="resolveModalReason" name="reason" rows="3" required
+                        placeholder="What caused this incident? (e.g., server overload, configuration error, network issue...)"
                         class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm"></textarea>
-                    <p class="mt-1 text-xs text-tn-comment">This information will help with future incident analysis and
-                        prevention.</p>
+                </div>
+                <div class="mb-4">
+                    <label for="resolveModalAction" class="block text-sm font-medium text-tn-text">Action Taken:</label>
+                    <textarea id="resolveModalAction" name="action_taken" rows="3" required
+                        placeholder="What steps were taken to resolve this incident? (e.g., restarted service, updated config, scaled resources...)"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label for="resolveModalPending" class="block text-sm font-medium text-tn-text">Pending Actions
+                        (Optional):</label>
+                    <textarea id="resolveModalPending" name="pending_actions" rows="2"
+                        placeholder="Any follow-up actions needed? (e.g., monitor for 24h, schedule maintenance, update documentation...)"
+                        class="mt-1 block w-full bg-tn-bg border border-tn-comment rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-tn-blue focus:border-tn-blue sm:text-sm"></textarea>
+                    <p class="mt-1 text-xs text-tn-comment">This structured information will help with future incident
+                        analysis and prevention.</p>
                 </div>
                 <div class="flex justify-end space-x-3">
                     <button type="button" onclick="closeResolveModal()"
@@ -761,6 +779,22 @@
                         Incident</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Resolve Notes View Modal -->
+    <div id="resolveNotesModal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <button onclick="closeResolveNotesModal()" class="modal-close">×</button>
+            <h3 class="text-lg font-semibold mb-4 text-tn-cyan">Resolution Details: <span
+                    id="resolveNotesModalJobName"></span></h3>
+            <div id="resolveNotesModalContent" class="space-y-4">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="flex justify-end mt-6">
+                <button type="button" onclick="closeResolveNotesModal()"
+                    class="py-2 px-4 border border-tn-comment rounded-md shadow-sm text-sm font-medium text-tn-text hover:bg-tn-comment focus:outline-none">Close</button>
+            </div>
         </div>
     </div>
 

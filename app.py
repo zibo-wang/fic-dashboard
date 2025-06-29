@@ -729,7 +729,7 @@ def update_inc_link(incident_id):
 @app.route("/resolve-incident/<int:incident_id>", methods=["POST"])
 @login_required
 def resolve_incident(incident_id):
-    """Marks an incident as resolved with resolution notes.
+    """Marks an incident as resolved with structured resolution notes.
 
     Args:
         incident_id (int): ID of the incident to resolve
@@ -737,18 +737,32 @@ def resolve_incident(incident_id):
     Returns:
         Response: Redirect to the index page
     """
-    resolve_notes = request.form.get("resolve_notes")
+    reason = request.form.get("reason")
+    action_taken = request.form.get("action_taken")
+    pending_actions = request.form.get("pending_actions", "")
 
-    if not resolve_notes or not resolve_notes.strip():
-        flash("Resolution notes are required to resolve an incident.", "error")
+    # Validate required fields
+    if not reason or not reason.strip():
+        flash("Root cause/reason is required to resolve an incident.", "error")
         return redirect(url_for("index"))
+
+    if not action_taken or not action_taken.strip():
+        flash("Action taken is required to resolve an incident.", "error")
+        return redirect(url_for("index"))
+
+    # Format structured resolution notes
+    resolve_notes = f"**Root Cause/Reason:**\n{reason.strip()}\n\n"
+    resolve_notes += f"**Action Taken:**\n{action_taken.strip()}"
+
+    if pending_actions and pending_actions.strip():
+        resolve_notes += f"\n\n**Pending Actions:**\n{pending_actions.strip()}"
 
     # This is a manual resolve button.
     # If an incident is not picked up by the API as "OK" or gone,
     # SREs can manually resolve it.
     g.db.execute(
         "UPDATE incidents SET resolved_at = ?, resolve_notes = ? WHERE id = ?",
-        (now_utc(), resolve_notes.strip(), incident_id),
+        (now_utc(), resolve_notes, incident_id),
     )
     g.db.commit()
     flash("Incident resolved successfully.", "success")

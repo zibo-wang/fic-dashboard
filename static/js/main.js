@@ -403,7 +403,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const resolveModalForm = document.getElementById('resolveModalForm');
     const resolveModalIncidentId = document.getElementById('resolveModalIncidentId');
     const resolveModalJobName = document.getElementById('resolveModalJobName');
-    const resolveModalNotes = document.getElementById('resolveModalNotes');
+    const resolveModalReason = document.getElementById('resolveModalReason');
+    const resolveModalAction = document.getElementById('resolveModalAction');
+    const resolveModalPending = document.getElementById('resolveModalPending');
 
     /**
      * Opens the resolve modal for a specific incident.
@@ -412,7 +414,8 @@ document.addEventListener('DOMContentLoaded', function () {
      * @param {string} jobName - The name of the job
      */
     window.openResolveModal = function (incidentId, jobName) {
-        if (!resolveModal || !resolveModalForm || !resolveModalIncidentId || !resolveModalJobName || !resolveModalNotes) {
+        if (!resolveModal || !resolveModalForm || !resolveModalIncidentId || !resolveModalJobName ||
+            !resolveModalReason || !resolveModalAction || !resolveModalPending) {
             console.error('Resolve modal elements not found');
             return;
         }
@@ -421,10 +424,13 @@ document.addEventListener('DOMContentLoaded', function () {
         resolveModalIncidentId.value = incidentId;
         resolveModalJobName.textContent = jobName;
         resolveModalForm.action = `/resolve-incident/${incidentId}`;
-        resolveModalNotes.value = ''; // Clear previous notes
+        // Clear all form fields
+        resolveModalReason.value = '';
+        resolveModalAction.value = '';
+        resolveModalPending.value = '';
         resolveModal.classList.remove('hidden');
-        // Focus on the textarea
-        setTimeout(() => resolveModalNotes.focus(), 100);
+        // Focus on the first textarea
+        setTimeout(() => resolveModalReason.focus(), 100);
     }
 
     /**
@@ -437,6 +443,77 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         resolveModal.classList.add('hidden');
         resolveModalForm.reset();
+    }
+
+    // Resolve Notes View Modal
+    const resolveNotesModal = document.getElementById('resolveNotesModal');
+    const resolveNotesModalJobName = document.getElementById('resolveNotesModalJobName');
+    const resolveNotesModalContent = document.getElementById('resolveNotesModalContent');
+
+    /**
+     * Opens the resolve notes view modal to display full resolution details.
+     *
+     * @param {string} jobName - The name of the job
+     * @param {string} resolveNotes - The full resolution notes
+     */
+    window.openResolveNotesModal = function (jobName, resolveNotes) {
+        if (!resolveNotesModal || !resolveNotesModalJobName || !resolveNotesModalContent) {
+            console.error('Resolve notes modal elements not found');
+            return;
+        }
+
+        // Hide all other modals first
+        modals.forEach(modal => modal.classList.add('hidden'));
+
+        resolveNotesModalJobName.textContent = jobName;
+
+        // Parse and format the structured notes
+        const sections = resolveNotes.split('\n\n');
+        let formattedContent = '';
+
+        sections.forEach(section => {
+            if (section.trim()) {
+                const lines = section.split('\n');
+                const header = lines[0];
+                const content = lines.slice(1).join('\n');
+
+                if (header.startsWith('**') && header.endsWith(':**')) {
+                    // This is a section header
+                    const sectionTitle = header.replace(/\*\*/g, '').replace(':', '');
+                    formattedContent += `
+                        <div class="mb-4">
+                            <h4 class="text-sm font-semibold text-tn-cyan mb-2">${sectionTitle}</h4>
+                            <div class="bg-tn-bg-alt p-3 rounded border border-tn-comment">
+                                <p class="text-sm text-tn-text whitespace-pre-wrap">${content}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Fallback for unstructured content
+                    formattedContent += `
+                        <div class="mb-4">
+                            <div class="bg-tn-bg-alt p-3 rounded border border-tn-comment">
+                                <p class="text-sm text-tn-text whitespace-pre-wrap">${section}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        resolveNotesModalContent.innerHTML = formattedContent;
+        resolveNotesModal.classList.remove('hidden');
+    }
+
+    /**
+     * Closes the resolve notes view modal.
+     */
+    window.closeResolveNotesModal = function () {
+        if (!resolveNotesModal) {
+            console.error('Resolve notes modal elements not found');
+            return;
+        }
+        resolveNotesModal.classList.add('hidden');
     }
 
     // Close modals when clicking outside
@@ -456,6 +533,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (resolveModal && !resolveModal.classList.contains('hidden')) {
                 closeResolveModal();
+            }
+            if (resolveNotesModal && !resolveNotesModal.classList.contains('hidden')) {
+                closeResolveNotesModal();
             }
         }
     });
@@ -478,6 +558,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (resolveModal && !resolveModal.classList.contains('hidden')) {
                 closeResolveModal();
             }
+            if (resolveNotesModal && !resolveNotesModal.classList.contains('hidden')) {
+                closeResolveNotesModal();
+            }
         }
     });
 
@@ -485,8 +568,28 @@ document.addEventListener('DOMContentLoaded', function () {
     let lastIncidentCount = document.querySelectorAll('tr[data-first-detected]').length;
     let lastRefreshTimeValue = lastRefreshTimeElem?.textContent || 'Never';
 
+    // Function to check if any modal is currently open
+    function isAnyModalOpen() {
+        const allModals = [
+            respondModal,
+            incLinkModal,
+            addEngineerModal,
+            addIncidentModal,
+            resolveModal,
+            resolveNotesModal
+        ];
+
+        return allModals.some(modal => modal && !modal.classList.contains('hidden'));
+    }
+
     // Function to check if page needs refresh
     function checkForUpdates() {
+        // Don't refresh if any modal is open
+        if (isAnyModalOpen()) {
+            console.log('Skipping refresh - modal is open');
+            return;
+        }
+
         // Check both incident count and last refresh time
         Promise.all([
             fetch('/get-incident-count').then(r => r.json()),
@@ -510,11 +613,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Check for updates every 5 seconds
+    // Check for updates every 30 seconds
     setInterval(checkForUpdates, 30000);
 
-    // Force refresh every 2 minutes as a fallback
+    // Force refresh every 2 minutes as a fallback (but still respect open modals)
     setInterval(() => {
+        if (isAnyModalOpen()) {
+            console.log('Skipping forced refresh - modal is open');
+            return;
+        }
         console.log('Forcing periodic refresh');
         location.reload();
     }, 120000);
